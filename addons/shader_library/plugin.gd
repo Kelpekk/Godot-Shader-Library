@@ -28,7 +28,7 @@ func _has_main_screen() -> bool:
 	return true
 
 func _get_plugin_name() -> String:
-	return "Shadery"
+	return "ShaderLib"
 
 func _get_plugin_icon() -> Texture2D:
 	return get_editor_interface().get_base_control().get_theme_icon("CanvasItem", "EditorIcons")

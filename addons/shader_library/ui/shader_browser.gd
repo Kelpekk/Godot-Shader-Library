@@ -270,10 +270,20 @@ func _build_filters(parent: Control) -> void:
 	filters.add_child(sort_option)
 
 func _build_pagination(parent: Control) -> void:
+	# Main row container with pagination in center and credits on right
+	var row = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 0)
+	parent.add_child(row)
+	
+	# Left spacer (for centering)
+	var left_spacer = Control.new()
+	left_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(left_spacer)
+	
+	# Center: pagination buttons
 	var paging = HBoxContainer.new()
-	paging.alignment = BoxContainer.ALIGNMENT_CENTER
 	paging.add_theme_constant_override("separation", 16)
-	parent.add_child(paging)
+	row.add_child(paging)
 	
 	prev_button = Button.new()
 	prev_button.text = tr_key("prev")
@@ -288,6 +298,26 @@ func _build_pagination(parent: Control) -> void:
 	next_button.text = tr_key("next")
 	next_button.pressed.connect(_on_next)
 	paging.add_child(next_button)
+	
+	# Right spacer with credits
+	var right_spacer = HBoxContainer.new()
+	right_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	right_spacer.alignment = BoxContainer.ALIGNMENT_END
+	right_spacer.add_theme_constant_override("separation", 4)
+	row.add_child(right_spacer)
+	
+	var heart_label = Label.new()
+	heart_label.text = "♥"
+	heart_label.add_theme_color_override("font_color", Color(1.0, 0.3, 0.4))
+	heart_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	right_spacer.add_child(heart_label)
+	
+	var link_button = LinkButton.new()
+	link_button.text = "godotshaders.com"
+	link_button.uri = "https://godotshaders.com"
+	link_button.underline = LinkButton.UNDERLINE_MODE_ON_HOVER
+	link_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	right_spacer.add_child(link_button)
 
 func _init_components() -> void:
 	# Cache - this is the main data source (downloads from GitHub)

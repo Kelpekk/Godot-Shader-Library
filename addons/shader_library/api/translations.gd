@@ -49,6 +49,7 @@ static var TRANSLATIONS: Dictionary = {
 		"delete_error": "Error deleting shader",
 		"hint_browser": "💡 Open in browser to see videos, live preview and additional materials",
 		"connecting": "Connecting to website...",
+		"credits": "Shaders powered by",
 	},
 	"pl": {
 		"loading": "Ładowanie...",
@@ -91,6 +92,7 @@ static var TRANSLATIONS: Dictionary = {
 		"delete_error": "Błąd usuwania shadera",
 		"hint_browser": "💡 Otwórz w przeglądarce aby zobaczyć filmy, live preview i dodatkowe materiały",
 		"connecting": "Łączenie ze stroną...",
+		"credits": "Shadery dzięki",
 	},
 	"de": {
 		"loading": "Laden...",
