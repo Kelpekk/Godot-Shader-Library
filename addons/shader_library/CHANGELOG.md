@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.3.0] - 2026-03-12
+
+### Added
+- `.gitattributes` - Users download only addons folder from Asset Library
+
+### Fixed
+- GitHub Actions workflow permissions for auto-updates
+- Updated to Node.js 24 compatible actions
+
+### Changed
+- Cache duration clarified to 24 hours (daily auto-refresh)
+- Updated README documentation
+
 ## [1.2.0] - 2026-03-10
 
 ### Added

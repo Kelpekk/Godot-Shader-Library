@@ -30,7 +30,11 @@ Browse and install shaders from [godotshaders.com](https://godotshaders.com) dir
 
 ### From Godot Asset Library
 
-*Coming soon!*
+1. Open Godot 4.x
+2. Go to **AssetLib** tab
+3. Search for **"Shader Library"**
+4. Click **Download** and **Install**
+5. Enable in **Project Settings → Plugins**
 
 ## 🚀 Usage
 
