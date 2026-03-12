@@ -39,7 +39,7 @@ Browse and install shaders from [godotshaders.com](https://godotshaders.com) dir
 ## 🚀 Usage
 
 ### Browse Shaders
-1. Open the **Shadery** tab (top menu bar)
+1. Open the **ShaderLib** tab (top menu bar)
 2. Browse through shader cards with previews
 3. Use pagination to navigate (40 shaders per page)
 
