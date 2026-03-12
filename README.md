@@ -13,7 +13,7 @@ Browse and install shaders from [godotshaders.com](https://godotshaders.com) dir
 - **🔎 Search & Filter** - Find shaders by name, author, or category (Spatial, Canvas Item, etc.)
 - **📥 One-Click Install** - Download shaders directly to your project
 - **👁️ Preview** - View shader details, description, tags, and code before installing
-- **💾 Smart Caching** - 7-day cache for fast loading
+- **💾 Smart Caching** - 24-hour cache with daily auto-updates
 - **🌍 Multi-Language** - Supports English, Polish, German, Spanish, French, Chinese, Japanese, Russian, Portuguese
 - **🎯 Godot Native UI** - Seamless integration with Godot Editor
 
@@ -70,10 +70,9 @@ addons/shader_library/
 ├── plugin.gd           # Main plugin entry point
 ├── icon.svg            # Plugin icon
 ├── api/
-│   ├── cache_manager.gd      # Caching system
-│   ├── godotshaders_scraper.gd  # Web scraper
+│   ├── cache_manager.gd      # Downloads shader database from GitHub
 │   ├── installed_manager.gd  # Track installed shaders
-│   ├── shader_installer.gd   # Download & install
+│   ├── shader_installer.gd   # Download & install shaders
 │   └── translations.gd       # Multi-language support
 └── ui/
     ├── shader_browser.gd     # Main UI logic
