@@ -38,7 +38,7 @@ Browse and download shaders from [godotshaders.com](https://godotshaders.com) di
 ### Install a Shader
 1. Find the shader you want
 2. Click **Install** button
-3. Shader will be added to `res://shaders/` folder
+3. Shader will be added to `res://shaders/shaderlib/` folder
 
 ### View Original
 1. Click **View** button on any shader card

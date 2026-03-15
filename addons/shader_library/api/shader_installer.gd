@@ -11,7 +11,11 @@ signal installation_progress(shader_name: String, progress: float, status: Strin
 signal installation_completed(shader_path: String)
 signal installation_failed(error: String)
 
-const SHADERS_DIR = "res://shaders/"
+const SETTING_SHADERS_PATH = "shader_library/general/shaders_folder"
+const DEFAULT_SHADERS_PATH = "res://shaders/shaderlib/"
+
+func _get_shaders_dir() -> String:
+	return ProjectSettings.get_setting(SETTING_SHADERS_PATH, DEFAULT_SHADERS_PATH)
 
 var http_request: HTTPRequest
 var current_shader: Dictionary = {}
@@ -25,9 +29,24 @@ func _ready() -> void:
 	_ensure_shaders_directory()
 
 func _ensure_shaders_directory() -> void:
+	var shaders_path = _get_shaders_dir()
+	# Remove res:// prefix for directory operations
+	var relative_path = shaders_path.replace("res://", "")
+	if relative_path.ends_with("/"):
+		relative_path = relative_path.substr(0, relative_path.length() - 1)
+	
 	var dir = DirAccess.open("res://")
-	if dir and not dir.dir_exists("shaders"):
-		dir.make_dir("shaders")
+	if dir:
+		# Create each directory in the path
+		var parts = relative_path.split("/")
+		var current_path = ""
+		for part in parts:
+			if current_path == "":
+				current_path = part
+			else:
+				current_path += "/" + part
+			if not dir.dir_exists(current_path):
+				dir.make_dir(current_path)
 
 ## Install a shader - downloads from its URL
 func install_shader(shader: Dictionary) -> void:
@@ -42,7 +61,6 @@ func install_shader(shader: Dictionary) -> void:
 	installation_started.emit(shader_name)
 	installation_progress.emit(shader_name, 0.1, Translations.t("connecting"))
 	
-	print("[ShaderInstaller] Downloading: ", url)
 	var error = http_request.request(url)
 	if error != OK:
 		installation_failed.emit("HTTP request failed: " + str(error))
@@ -221,7 +239,7 @@ func _save_shader(code: String) -> String:
 	_ensure_shaders_directory()
 	
 	var filename = _sanitize_filename(current_shader.get("title", "shader"))
-	var filepath = SHADERS_DIR + filename + ".gdshader"
+	var filepath = _get_shaders_dir() + filename + ".gdshader"
 	
 	# Create header with attribution
 	var header = "// ============================================\n"
@@ -237,13 +255,10 @@ func _save_shader(code: String) -> String:
 	
 	var file = FileAccess.open(filepath, FileAccess.WRITE)
 	if file == null:
-		print("[ShaderInstaller] Failed to open file: ", filepath)
 		return ""
 	
 	file.store_string(final_code)
 	file.close()
-	
-	print("[ShaderInstaller] Saved shader to: ", filepath)
 	
 	# Refresh filesystem
 	if Engine.is_editor_hint():

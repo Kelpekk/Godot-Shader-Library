@@ -61,8 +61,6 @@ func load_cache() -> bool:
 	
 	cached_shaders = data.get("shaders", [])
 	cache_timestamp = data.get("timestamp", 0)
-	
-	print("[Cache] Loaded ", cached_shaders.size(), " shaders from cache")
 	return true
 
 func save_cache(shaders: Array) -> void:
@@ -79,7 +77,6 @@ func save_cache(shaders: Array) -> void:
 	if file:
 		file.store_string(json_str)
 		file.close()
-		print("[Cache] Saved ", shaders.size(), " shaders to cache")
 
 func is_cache_valid() -> bool:
 	if cached_shaders.is_empty():
@@ -93,14 +90,12 @@ func get_cached_shaders() -> Array:
 
 ## Fetch shader database from GitHub (1 request instead of 52 pages!)
 func fetch_from_github() -> void:
-	print("[Cache] Fetching shader database from GitHub...")
 	var error = http_request.request(GITHUB_DATABASE_URL)
 	if error != OK:
 		database_error.emit("Failed to connect to GitHub")
 
 func _on_database_downloaded(result: int, code: int, headers: PackedStringArray, body: PackedByteArray) -> void:
 	if result != HTTPRequest.RESULT_SUCCESS or code != 200:
-		print("[Cache] GitHub download failed: ", result, " code: ", code)
 		database_error.emit("Failed to download shader database")
 		return
 	
@@ -122,8 +117,6 @@ func _on_database_downloaded(result: int, code: int, headers: PackedStringArray,
 	
 	# Save to local cache
 	save_cache(shaders)
-	
-	print("[Cache] Downloaded ", shaders.size(), " shaders from GitHub")
 	database_loaded.emit(shaders)
 
 func clear_cache() -> void:
@@ -133,8 +126,6 @@ func clear_cache() -> void:
 	var path = CACHE_DIR + CACHE_FILE
 	if FileAccess.file_exists(path):
 		DirAccess.remove_absolute(path)
-	
-	print("[Cache] Cleared")
 
 ## Detect image format from binary data
 func _detect_image_format(data: PackedByteArray) -> String:

@@ -17,7 +17,7 @@
 
 ### Added
 - **Installed Shaders Tab** - Manage installed shaders
-  - View all installed shaders in res://shaders/
+  - View all installed shaders in res://shaders/shaderlib/
   - Open shader in editor with one click
   - Delete installed shaders with confirmation
   - Auto-scan on installation

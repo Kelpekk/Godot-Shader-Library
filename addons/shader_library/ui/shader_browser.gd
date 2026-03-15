@@ -54,11 +54,13 @@ var category_colors: Dictionary = {
 	"fog": Color(0.5, 0.5, 0.6)
 }
 
-# Image loading
+# Image loading - parallel (4 concurrent downloads)
+const PARALLEL_DOWNLOADS: int = 4
 var image_queue: Array = []
-var image_http: HTTPRequest
-var current_image_card: Control = null
-var current_image_url: String = ""
+var image_https: Array = []  # Array of HTTPRequest
+var current_image_cards: Array = []  # Array of Control
+var current_image_urls: Array = []  # Array of String
+var active_downloads: int = 0
 
 # Shader preview dialog
 var preview_dialog: Window
@@ -343,11 +345,18 @@ func _init_components() -> void:
 	shader_installer.installation_completed.connect(_on_installed)
 	shader_installer.installation_failed.connect(_on_install_error)
 	
-	# Image loader
-	image_http = HTTPRequest.new()
-	image_http.timeout = 15
-	add_child(image_http)
-	image_http.request_completed.connect(_on_image_loaded)
+	# Image loaders - parallel downloads
+	image_https.clear()
+	current_image_cards.clear()
+	current_image_urls.clear()
+	for i in PARALLEL_DOWNLOADS:
+		var http = HTTPRequest.new()
+		http.timeout = 15
+		add_child(http)
+		http.request_completed.connect(_on_image_loaded.bind(i))
+		image_https.append(http)
+		current_image_cards.append(null)
+		current_image_urls.append("")
 	
 	# Preview HTTP
 	preview_http = HTTPRequest.new()
@@ -386,7 +395,6 @@ func _start_loading() -> void:
 
 func _on_database_error(error: String) -> void:
 	progress_bar.visible = false
-	print("[ShaderBrowser] Database error: ", error)
 	
 	# Use existing cache - don't lose data on refresh failure
 	var cached = cache_manager.get_cached_shaders()
@@ -440,9 +448,11 @@ func _on_filter_changed(_arg = null) -> void:
 	_apply_filters()
 
 func _display_page() -> void:
-	# Cancel any pending image request
-	if image_http and image_http.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
-		image_http.cancel_request()
+	# Cancel any pending image requests
+	for http in image_https:
+		if http and http.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
+			http.cancel_request()
+	active_downloads = 0
 	
 	# Clear grid
 	for child in shader_grid.get_children():
@@ -474,43 +484,57 @@ func _display_page() -> void:
 	_load_next_image()
 
 func _load_next_image() -> void:
-	if image_queue.is_empty():
-		return
-	
-	# Wait if HTTP request is still busy
-	if image_http.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
-		# Will be called again when current request completes
-		return
-	
-	var item = image_queue.pop_front()
-	current_image_card = item.card
-	current_image_url = item.url
-	
-	if not is_instance_valid(current_image_card):
-		call_deferred("_load_next_image")
-		return
-	
-	# Check cache first
-	if cache_manager.has_cached_image(current_image_url):
-		var img = cache_manager.load_cached_image(current_image_url)
-		if img:
-			var tex = ImageTexture.create_from_image(img)
-			_apply_image_to_card(current_image_card, tex)
-			call_deferred("_load_next_image")
-			return
-	
-	# Download image
-	var err = image_http.request(current_image_url)
-	if err != OK:
-		print("[ShaderBrowser] Image request error: ", err)
-		call_deferred("_load_next_image")
+	# Fill all available download slots
+	while active_downloads < PARALLEL_DOWNLOADS and not image_queue.is_empty():
+		# Find free slot
+		var slot = -1
+		for i in PARALLEL_DOWNLOADS:
+			if image_https[i].get_http_client_status() == HTTPClient.STATUS_DISCONNECTED:
+				slot = i
+				break
+		
+		if slot == -1:
+			break  # No free slots
+		
+		var item = image_queue.pop_front()
+		var card = item.card
+		var url = item.url
+		
+		if not is_instance_valid(card):
+			continue  # Skip invalid cards
+		
+		# Check cache first
+		if cache_manager.has_cached_image(url):
+			var img = cache_manager.load_cached_image(url)
+			if img:
+				var tex = ImageTexture.create_from_image(img)
+				_apply_image_to_card(card, tex)
+				continue  # Don't count as active download, check next
+		
+		# Start download
+		current_image_cards[slot] = card
+		current_image_urls[slot] = url
+		active_downloads += 1
+		
+		var err = image_https[slot].request(url)
+		if err != OK:
+			active_downloads -= 1
+			current_image_cards[slot] = null
+			current_image_urls[slot] = ""
 
-func _on_image_loaded(result: int, code: int, headers: PackedStringArray, body: PackedByteArray) -> void:
+func _on_image_loaded(result: int, code: int, headers: PackedStringArray, body: PackedByteArray, slot: int) -> void:
+	active_downloads = maxi(0, active_downloads - 1)
+	
+	var card = current_image_cards[slot]
+	var url = current_image_urls[slot]
+	current_image_cards[slot] = null
+	current_image_urls[slot] = ""
+	
 	if result != HTTPRequest.RESULT_SUCCESS or code != 200:
 		call_deferred("_load_next_image")
 		return
 	
-	if not is_instance_valid(current_image_card):
+	if not is_instance_valid(card):
 		call_deferred("_load_next_image")
 		return
 	
@@ -529,10 +553,10 @@ func _on_image_loaded(result: int, code: int, headers: PackedStringArray, body: 
 	
 	if img:
 		var tex = ImageTexture.create_from_image(img)
-		_apply_image_to_card(current_image_card, tex)
+		_apply_image_to_card(card, tex)
 		
 		# Cache image
-		cache_manager.cache_image(current_image_url, body)
+		cache_manager.cache_image(url, body)
 	
 	call_deferred("_load_next_image")
 
@@ -679,9 +703,10 @@ func _create_card(shader: Dictionary) -> Control:
 	author.add_theme_color_override("font_color", text_dim)
 	content.add_child(author)
 	
-	# Spacer
+	# Spacer - ignore mouse to keep card hover active
 	var spacer = Control.new()
 	spacer.size_flags_vertical = SIZE_EXPAND_FILL
+	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	content.add_child(spacer)
 	
 	# License + Likes
@@ -696,6 +721,7 @@ func _create_card(shader: Dictionary) -> Control:
 	
 	var info_spacer = Control.new()
 	info_spacer.size_flags_horizontal = SIZE_EXPAND_FILL
+	info_spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	info_row.add_child(info_spacer)
 	
 	var likes = Label.new()
@@ -1230,6 +1256,11 @@ func _parse_and_display_shader_info(html: String) -> void:
 		if desc_panel and desc_lbl:
 			desc_lbl.text = description
 			desc_panel.visible = true
+	else:
+		# Hide description panel if no description found
+		var desc_panel = preview_dialog.find_child("DescPanel", true, false)
+		if desc_panel:
+			desc_panel.visible = false
 	
 	# Extract tags
 	var tags = _extract_tags(html)
@@ -1239,6 +1270,10 @@ func _parse_and_display_shader_info(html: String) -> void:
 		if tags_row and tags_lbl:
 			tags_lbl.text = tags
 			tags_row.visible = true
+	else:
+		var tags_row = preview_dialog.find_child("TagsRow", true, false)
+		if tags_row:
+			tags_row.visible = false
 	
 	# Extract date
 	var date = _extract_date(html)
@@ -1246,31 +1281,152 @@ func _parse_and_display_shader_info(html: String) -> void:
 		var date_lbl = preview_dialog.find_child("DateLabel", true, false)
 		if date_lbl:
 			date_lbl.text = "📅 " + date
+			date_lbl.visible = true
+	else:
+		var date_lbl = preview_dialog.find_child("DateLabel", true, false)
+		if date_lbl:
+			date_lbl.visible = false
 
 func _extract_description(html: String) -> String:
-	# Find entry-content single-content which contains the actual shader description
-	var entry_start = html.find("entry-content single-content")
-	if entry_start == -1:
-		entry_start = html.find("entry-content")
-	if entry_start == -1:
+	# Strategy: Find description content between header info and "Shader code" section
+	
+	# First, find where "Shader code" section starts - this is our end marker
+	# Look for actual heading, not CSS references
+	var shader_code_pos = html.find(">Shader code<")  # Heading tag content
+	if shader_code_pos == -1:
+		shader_code_pos = html.find("##### Shader code")  # Markdown style
+	if shader_code_pos == -1:
+		shader_code_pos = html.find("Shader code</h")  # Before closing h tag
+	if shader_code_pos == -1:
+		# Last resort - find shader_type keyword in actual code block
+		var code_block = html.find("<code")
+		if code_block != -1:
+			var shader_type_in_code = html.find("shader_type", code_block)
+			if shader_type_in_code != -1:
+				shader_code_pos = code_block
+	if shader_code_pos == -1:
 		return ""
 	
-	# Find first <p> after entry-content
-	var start = html.find("<p>", entry_start)
-	if start == -1:
+	# Look for description start markers (try multiple approaches)
+	var start = -1
+	
+	# Approach 1: Find entry-content class and look for <p> within a reasonable range
+	var entry_start = html.find("entry-content")
+	if entry_start != -1 and entry_start < shader_code_pos:
+		# Only search for <p> within 500 chars after entry-content, not across the whole doc
+		var search_limit = mini(entry_start + 500, shader_code_pos)
+		var p_pos = html.find("<p>", entry_start)
+		if p_pos != -1 and p_pos < search_limit:
+			start = p_pos
+	
+	# Approach 2: Find first <p> after the header section (author/date line)
+	if start == -1 or start >= shader_code_pos:
+		# Look for paragraph after author/date info which often contains "|"
+		var header_end = html.rfind("|", shader_code_pos)
+		if header_end != -1 and header_end > shader_code_pos - 5000:  # Only if | is within 5000 chars before shader code
+			var p_after = html.find("<p>", header_end)
+			if p_after != -1 and p_after < shader_code_pos:
+				start = p_after
+	
+	# Approach 3: Just find the last <p> block before shader code
+	if start == -1 or start >= shader_code_pos:
+		var search_pos = 0
+		var last_valid_p = -1
+		while true:
+			var p_pos = html.find("<p>", search_pos)
+			if p_pos == -1 or p_pos >= shader_code_pos:
+				break
+			# Make sure this <p> has actual content
+			var p_end = html.find("</p>", p_pos)
+			if p_end != -1 and p_end < shader_code_pos:
+				var content_check = html.substr(p_pos + 3, mini(100, p_end - p_pos - 3))
+				# Skip if it looks like navigation or header
+				if not content_check.contains("Sign in") and not content_check.contains("Toggle"):
+					last_valid_p = p_pos
+			search_pos = p_pos + 1
+		if last_valid_p != -1:
+			# Go back to find the first <p> in this description section
+			# Usually there are multiple paragraphs together
+			var desc_start = last_valid_p
+			var prev_search = last_valid_p - 500
+			if prev_search < 0:
+				prev_search = 0
+			# Find the first <p> in this cluster
+			var first_in_cluster = html.find("<p>", prev_search)
+			if first_in_cluster != -1 and first_in_cluster < last_valid_p:
+				# Check if there's a significant gap (like a header) between them
+				var between = html.substr(first_in_cluster, last_valid_p - first_in_cluster)
+				if not between.contains("<h") and not between.contains("<article"):
+					desc_start = first_in_cluster
+			start = desc_start
+	
+	# Approach 4: Plain text description (not wrapped in <p> tags)
+	# Look backwards from "Shader code" header for description text
+	if start == -1 or start >= shader_code_pos:
+		# Find the Shader code header position
+		var code_header_pos = shader_code_pos
+		if code_header_pos > 200:
+			# Look backwards from shader code section to find content
+			# Search for a larger area - 3000 chars before Shader code
+			var search_start = code_header_pos - 3000
+			if search_start < 0:
+				search_start = 0
+			var search_area = html.substr(search_start, code_header_pos - search_start)
+			
+			# Try multiple patterns to find the end of header info
+			var desc_start_local = -1
+			
+			# Pattern 1: Look for likes count span closing: </span> after a number
+			var likes_span = search_area.rfind("</span>")
+			if likes_span != -1:
+				# Check if there's meaningful text after it
+				var after_span = search_area.substr(likes_span + 7).strip_edges()
+				if after_span.length() > 20:
+					desc_start_local = likes_span + 7
+			
+			# Pattern 2: Look for date pattern then find next content
+			if desc_start_local == -1:
+				var date_markers = ["2026", "2025", "2024", "2023", "2022"]
+				for year in date_markers:
+					var year_pos = search_area.rfind(year)
+					if year_pos != -1:
+						# Find closing tag after year
+						var close_tag = search_area.find(">", year_pos)
+						if close_tag != -1 and close_tag < search_area.length() - 50:
+							var after_year = search_area.substr(close_tag + 1).strip_edges()
+							if after_year.length() > 20 and not after_year.begins_with("<"):
+								desc_start_local = close_tag + 1
+								break
+			
+			if desc_start_local != -1:
+				var plain_text = search_area.substr(desc_start_local)
+				# Clean HTML tags
+				var tag_regex = RegEx.new()
+				tag_regex.compile("<[^>]+>")
+				plain_text = tag_regex.sub(plain_text, "", true)
+				plain_text = plain_text.replace("&nbsp;", " ")
+				plain_text = plain_text.replace("&amp;", "&")
+				plain_text = plain_text.replace("&#8217;", "'")
+				plain_text = plain_text.replace("&#039;", "'")
+				plain_text = plain_text.strip_edges()
+				
+				# Remove "Shader code" header if captured
+				if plain_text.begins_with("Shader code"):
+					plain_text = plain_text.substr(11).strip_edges()
+				
+				# Skip navigation/menu text
+				if plain_text.length() > 10 and not plain_text.contains("Sign in") and not plain_text.contains("Toggle"):
+					if plain_text.length() > 1500:
+						plain_text = plain_text.substr(0, 1500) + "..."
+					return plain_text
+		
+		return ""
+	
+	if start >= shader_code_pos:
 		return ""
 	
 	# Find where shader code section begins
-	var end = html.find("<h5>Shader code</h5>", start)
-	if end == -1:
-		end = html.find("Shader code</h5>", start)
-	if end == -1:
-		end = html.find("<pre class=\"line-numbers", start)
-	if end == -1:
-		end = html.find("shader_type", start)
-	if end == -1 or (end - start) > 5000:
-		# Limit to reasonable size
-		end = start + 3000
+	var end = shader_code_pos
 	
 	var content = html.substr(start, end - start)
 	
@@ -1287,103 +1443,245 @@ func _extract_description(html: String) -> String:
 	content = content.replace("</p>", "\n")
 	content = content.replace("<br>", "\n")
 	content = content.replace("<br/>", "\n")
+	content = content.replace("<br />", "\n")
 	content = content.replace("<ul>", "")
 	content = content.replace("</ul>", "")
 	content = content.replace("<li>", "• ")
 	content = content.replace("</li>", "\n")
-	content = content.replace("<strong>", "[b]")
-	content = content.replace("</strong>", "[/b]")
-	content = content.replace("<em>", "[i]")
-	content = content.replace("</em>", "[/i]")
-	content = content.replace("<h5>", "\n[b]")
-	content = content.replace("</h5>", "[/b]\n")
+	content = content.replace("<strong>", "")
+	content = content.replace("</strong>", "")
+	content = content.replace("<em>", "")
+	content = content.replace("</em>", "")
+	content = content.replace("<b>", "")
+	content = content.replace("</b>", "")
+	content = content.replace("<i>", "")
+	content = content.replace("</i>", "")
+	content = content.replace("<code>", "`")
+	content = content.replace("</code>", "`")
+	content = content.replace("<h5>", "\n")
+	content = content.replace("</h5>", "\n")
+	content = content.replace("<h4>", "\n")
+	content = content.replace("</h4>", "\n")
 	content = content.replace("&nbsp;", " ")
 	content = content.replace("&amp;", "&")
 	content = content.replace("&lt;", "<")
 	content = content.replace("&gt;", ">")
 	content = content.replace("&#8211;", "–")
+	content = content.replace("&#8216;", "'")
 	content = content.replace("&#8217;", "'")
 	content = content.replace("&rsquo;", "'")
+	content = content.replace("&lsquo;", "'")
 	content = content.replace("&ldquo;", "\"")
 	content = content.replace("&rdquo;", "\"")
 	content = content.replace("&#039;", "'")
+	content = content.replace("&quot;", "\"")
 	
-	# Remove remaining HTML tags
+	# Remove remaining HTML tags (complete and incomplete)
 	var regex = RegEx.new()
-	regex.compile("<[^>]+>")
+	regex.compile("<[^>]*>?")
 	content = regex.sub(content, "", true)
+	# Also remove any leftover incomplete tags at the end
+	var incomplete_tag = content.rfind("<")
+	if incomplete_tag != -1 and content.find(">", incomplete_tag) == -1:
+		content = content.substr(0, incomplete_tag)
 	
-	# Clean up multiple newlines
+	# Clean up multiple newlines and spaces
 	while content.contains("\n\n\n"):
 		content = content.replace("\n\n\n", "\n\n")
+	while content.contains("  "):
+		content = content.replace("  ", " ")
 	
 	content = content.strip_edges()
 	
 	# Limit length
-	if content.length() > 1000:
-		content = content.substr(0, 1000) + "..."
+	if content.length() > 1500:
+		content = content.substr(0, 1500) + "..."
 	
 	return content
 
 func _extract_tags(html: String) -> String:
+	# Try multiple methods to find tags
+	var tags: Array = []
+	
+	# Method 1: Find Tags section header
 	var start = html.find("Tags</h6>")
 	if start == -1:
-		return ""
+		start = html.find("Tags</h5>")
+	if start == -1:
+		start = html.find(">Tags<")
 	
-	var end = html.find("</div>", start)
-	if end == -1:
-		return ""
+	if start != -1:
+		# Find the tags container (usually ends with a div or before the next section)
+		var search_end = html.find("Shader code", start)
+		if search_end == -1:
+			search_end = mini(start + 2000, html.length())
+		
+		var tags_section = html.substr(start, search_end - start)
+		
+		# Method 1a: Extract from href links with shader-tag
+		var tag_regex = RegEx.new()
+		tag_regex.compile('/shader-tag/([^/"]+)/')
+		var results = tag_regex.search_all(tags_section)
+		for result in results:
+			var tag = result.get_string(1).replace("-", " ").capitalize()
+			if tag not in tags and tag.length() > 0:
+				tags.append(tag)
+		
+		# Method 1b: Try extracting text from tag links
+		if tags.is_empty():
+			var link_regex = RegEx.new()
+			link_regex.compile('>([A-Za-z][A-Za-z0-9 _-]{1,30})</a>')
+			results = link_regex.search_all(tags_section)
+			for result in results:
+				var tag = result.get_string(1).strip_edges()
+				# Filter out navigation/non-tag links
+				if tag not in tags and tag.length() > 1 and tag.length() < 32:
+					if not tag.to_lower().contains("sign") and not tag.to_lower().contains("menu"):
+						tags.append(tag)
 	
-	var tags_html = html.substr(start, end - start)
+	# Method 2: Look for tag links anywhere before "The shader code"
+	if tags.is_empty():
+		var license_pos = html.find("The shader code")
+		if license_pos != -1:
+			var before_license = html.substr(maxi(0, license_pos - 1500), 1500)
+			var tag_regex = RegEx.new()
+			tag_regex.compile('/shader-tag/([^/"]+)/')
+			var results = tag_regex.search_all(before_license)
+			for result in results:
+				var tag = result.get_string(1).replace("-", " ").capitalize()
+				if tag not in tags and tag.length() > 0:
+					tags.append(tag)
 	
-	# Extract tag names from links
-	var tag_regex = RegEx.new()
-	tag_regex.compile('capitalize;">([^<]+)</a>')
-	
-	var tags: Array = []
-	var results = tag_regex.search_all(tags_html)
-	for result in results:
-		var tag = result.get_string(1)
+	# Clean up HTML entities in tags
+	var clean_tags: Array = []
+	for tag in tags:
 		tag = tag.replace("&#039;", "'")
-		tags.append(tag)
+		tag = tag.replace("&amp;", "&")
+		tag = tag.strip_edges()
+		if tag.length() > 0:
+			clean_tags.append(tag)
 	
-	return ", ".join(tags)
+	return ", ".join(clean_tags)
 
 func _extract_date(html: String) -> String:
+	# Try multiple date extraction methods
+	
+	# Method 1: Standard datetime attribute
 	var regex = RegEx.new()
 	regex.compile('datetime="([^"]+)"[^>]*>([^<]+)</time>')
 	var result = regex.search(html)
 	if result:
-		return result.get_string(2)  # Return human-readable date
+		return result.get_string(2).strip_edges()
+	
+	# Method 2: Look for date pattern in text (Month Day, Year)
+	regex = RegEx.new()
+	regex.compile('(January|February|March|April|May|June|July|August|September|October|November|December)\\s+\\d{1,2},?\\s+\\d{4}')
+	result = regex.search(html)
+	if result:
+		return result.get_string(0)
+	
+	# Method 3: ISO date format (YYYY-MM-DD)
+	regex = RegEx.new()
+	regex.compile('datetime="(\\d{4}-\\d{2}-\\d{2})')
+	result = regex.search(html)
+	if result:
+		var iso_date = result.get_string(1)
+		# Convert to readable format
+		var parts = iso_date.split("-")
+		if parts.size() == 3:
+			var months = ["", "January", "February", "March", "April", "May", "June", 
+						  "July", "August", "September", "October", "November", "December"]
+			var month_num = int(parts[1])
+			if month_num >= 1 and month_num <= 12:
+				return "%s %s, %s" % [months[month_num], parts[2].lstrip("0"), parts[0]]
+	
 	return ""
 
 func _extract_shader_code_from_html(html: String) -> String:
-	# Find the shader code block - it's inside <code class="language-glsl">
-	var code_start_marker = 'class="language-glsl">'
-	var code_start = html.find(code_start_marker)
+	var code_start = -1
+	var code_start_marker = ""
 	
+	# Method 1: Find code block with language-glsl class
+	code_start_marker = 'class="language-glsl">'
+	code_start = html.find(code_start_marker)
+	
+	# Method 2: Try language-gdshader class
 	if code_start == -1:
-		# Fallback: try finding code block after "Shader code"
+		code_start_marker = 'class="language-gdshader">'
+		code_start = html.find(code_start_marker)
+	
+	# Method 3: Generic language class
+	if code_start == -1:
+		code_start_marker = 'class="language-'
+		code_start = html.find(code_start_marker)
+		if code_start != -1:
+			# Find the closing > of this tag
+			var tag_end = html.find(">", code_start)
+			if tag_end != -1:
+				code_start = tag_end
+				code_start_marker = ""
+	
+	# Method 4: Find code block after "Shader code" header
+	if code_start == -1:
 		var shader_code_header = html.find("Shader code</h5>")
+		if shader_code_header == -1:
+			shader_code_header = html.find("Shader code</h4>")
+		if shader_code_header == -1:
+			shader_code_header = html.find("Shader Code</h5>")
 		if shader_code_header != -1:
 			code_start = html.find("<code", shader_code_header)
 			if code_start != -1:
-				code_start = html.find(">", code_start)
+				var tag_end = html.find(">", code_start)
+				if tag_end != -1:
+					code_start = tag_end
+					code_start_marker = ""
+	
+	# Method 5: Find shader_type keyword directly in a code/pre block
+	if code_start == -1:
+		var shader_type_pos = html.find("shader_type")
+		if shader_type_pos != -1:
+			# Look backwards for <code or <pre
+			var search_start = maxi(0, shader_type_pos - 500)
+			var before = html.substr(search_start, shader_type_pos - search_start)
+			var code_tag = before.rfind("<code")
+			var pre_tag = before.rfind("<pre")
+			var start_tag = maxi(code_tag, pre_tag)
+			if start_tag != -1:
+				var tag_end = before.find(">", start_tag)
+				if tag_end != -1:
+					code_start = search_start + tag_end
+					code_start_marker = ""
 	
 	if code_start == -1:
 		return ""
 	
-	# Move past the marker
-	code_start += code_start_marker.length()
+	# Move past the marker if we have one
+	if not code_start_marker.is_empty():
+		code_start += code_start_marker.length()
+	else:
+		code_start += 1  # Move past the ">"
 	
-	# Find the closing </code> tag
+	# Find the closing tag
 	var code_end = html.find("</code>", code_start)
 	if code_end == -1:
 		code_end = html.find("</pre>", code_start)
 	if code_end == -1:
+		# Last resort: find next major HTML section
+		code_end = html.find("<h5>", code_start)
+		if code_end == -1:
+			code_end = html.find("<h4>", code_start)
+	if code_end == -1:
 		return ""
 	
 	var code_block = html.substr(code_start, code_end - code_start)
+	
+	# Validate it looks like shader code
+	if not code_block.contains("shader_type") and not code_block.contains("void fragment") and not code_block.contains("void vertex"):
+		# Might have grabbed wrong block, try to find shader_type within
+		var st_pos = code_block.find("shader_type")
+		if st_pos > 0:
+			code_block = code_block.substr(st_pos)
+	
 	return _clean_shader_code(code_block)
 
 func _clean_shader_code(code: String) -> String:

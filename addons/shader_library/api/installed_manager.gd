@@ -6,7 +6,11 @@ class_name InstalledShadersManager
 
 signal shaders_scanned(shaders: Array)
 
-const SHADERS_DIR = "res://shaders/"
+const SETTING_SHADERS_PATH = "shader_library/general/shaders_folder"
+const DEFAULT_SHADERS_PATH = "res://shaders/shaderlib/"
+
+func _get_shaders_dir() -> String:
+	return ProjectSettings.get_setting(SETTING_SHADERS_PATH, DEFAULT_SHADERS_PATH)
 
 var installed_shaders: Array = []
 
@@ -16,9 +20,9 @@ func _ready() -> void:
 func scan_installed_shaders() -> void:
 	installed_shaders.clear()
 	
-	var dir = DirAccess.open(SHADERS_DIR)
+	var shaders_dir = _get_shaders_dir()
+	var dir = DirAccess.open(shaders_dir)
 	if dir == null:
-		print("[InstalledShaders] Shaders directory not found")
 		shaders_scanned.emit([])
 		return
 	
@@ -27,14 +31,12 @@ func scan_installed_shaders() -> void:
 	
 	while file_name != "":
 		if not dir.current_is_dir() and file_name.ends_with(".gdshader"):
-			var shader_info = _parse_shader_file(SHADERS_DIR + file_name)
+			var shader_info = _parse_shader_file(shaders_dir + file_name)
 			if not shader_info.is_empty():
 				installed_shaders.append(shader_info)
 		file_name = dir.get_next()
 	
 	dir.list_dir_end()
-	
-	print("[InstalledShaders] Found ", installed_shaders.size(), " installed shaders")
 	shaders_scanned.emit(installed_shaders)
 
 func _parse_shader_file(path: String) -> Dictionary:
@@ -105,10 +107,7 @@ func delete_shader(shader: Dictionary) -> bool:
 	
 	var err = DirAccess.remove_absolute(path)
 	if err != OK:
-		print("[InstalledShaders] Failed to delete: ", path, " error: ", err)
 		return false
-	
-	print("[InstalledShaders] Deleted: ", path)
 	
 	# Refresh filesystem
 	if Engine.is_editor_hint():

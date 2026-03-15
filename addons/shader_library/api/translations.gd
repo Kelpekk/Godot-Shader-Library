@@ -402,13 +402,10 @@ static func _detect_locale() -> String:
 		if editor_settings:
 			var lang = editor_settings.get_setting("interface/editor/editor_language")
 			if lang and not lang.is_empty():
-				print("[ShaderLibrary] Detected editor language: ", lang)
 				return lang
 	
 	# Fallback to OS locale
-	var os_locale = OS.get_locale()
-	print("[ShaderLibrary] Using OS locale: ", os_locale)
-	return os_locale
+	return OS.get_locale()
 
 static func refresh_locale() -> void:
 	_current_locale = ""

@@ -64,7 +64,7 @@ Click **Preview** to see:
 - Direct link to godotshaders.com
 
 ### Install Shader
-Click **Install** to download the shader to `res://shaders/` folder.
+Click **Install** to download the shader to `res://shaders/shaderlib/` folder.
 
 ## 📁 Structure
 
