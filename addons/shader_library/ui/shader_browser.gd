@@ -74,6 +74,23 @@ var card_bg := Color(0.2, 0.2, 0.22)
 var accent := Color(0.3, 0.5, 0.9)
 var text_dim := Color(0.6, 0.6, 0.65)
 
+# Editor UI scale (HiDPI aware)
+var ui_scale: float = 1.0
+
+func _px(value: float) -> int:
+	return maxi(0, int(round(value * ui_scale)))
+
+func _v2(x: float, y: float) -> Vector2:
+	return Vector2(_px(x), _px(y))
+
+func _v2i(x: float, y: float) -> Vector2i:
+	return Vector2i(_px(x), _px(y))
+
+func _update_ui_scale() -> void:
+	ui_scale = 1.0
+	if Engine.is_editor_hint():
+		ui_scale = EditorInterface.get_editor_scale()
+
 ## Detect image format from binary data
 func _detect_image_format(data: PackedByteArray) -> String:
 	if data.size() < 12:
@@ -128,9 +145,11 @@ func _load_image_from_buffer(data: PackedByteArray) -> Image:
 	return null
 
 func _init() -> void:
-	custom_minimum_size = Vector2(800, 600)
+	custom_minimum_size = _v2(800, 600)
 
 func _ready() -> void:
+	_update_ui_scale()
+	custom_minimum_size = _v2(800, 600)
 	_build_ui()
 	_init_components()
 	call_deferred("_start_loading")
@@ -145,14 +164,14 @@ func _build_ui() -> void:
 	# Main margin
 	var margin = MarginContainer.new()
 	margin.set_anchors_preset(PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 20)
-	margin.add_theme_constant_override("margin_right", 20)
-	margin.add_theme_constant_override("margin_top", 12)
-	margin.add_theme_constant_override("margin_bottom", 12)
+	margin.add_theme_constant_override("margin_left", _px(20))
+	margin.add_theme_constant_override("margin_right", _px(20))
+	margin.add_theme_constant_override("margin_top", _px(12))
+	margin.add_theme_constant_override("margin_bottom", _px(12))
 	add_child(margin)
 	
 	var vbox = VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 12)
+	vbox.add_theme_constant_override("separation", _px(12))
 	vbox.size_flags_vertical = SIZE_EXPAND_FILL
 	vbox.size_flags_horizontal = SIZE_EXPAND_FILL
 	margin.add_child(vbox)
@@ -177,7 +196,7 @@ func _build_ui() -> void:
 	status_box.add_child(spacer)
 	
 	progress_bar = ProgressBar.new()
-	progress_bar.custom_minimum_size.x = 150
+	progress_bar.custom_minimum_size.x = _px(150)
 	progress_bar.show_percentage = false
 	progress_bar.visible = false
 	status_box.add_child(progress_bar)
@@ -189,8 +208,8 @@ func _build_ui() -> void:
 	vbox.add_child(scroll_container)
 	
 	shader_grid = HFlowContainer.new()
-	shader_grid.add_theme_constant_override("h_separation", 12)
-	shader_grid.add_theme_constant_override("v_separation", 12)
+	shader_grid.add_theme_constant_override("h_separation", _px(12))
+	shader_grid.add_theme_constant_override("v_separation", _px(12))
 	shader_grid.size_flags_horizontal = SIZE_EXPAND_FILL
 	scroll_container.add_child(shader_grid)
 	
@@ -199,17 +218,17 @@ func _build_ui() -> void:
 
 func _build_header(parent: Control) -> void:
 	var header = HBoxContainer.new()
-	header.add_theme_constant_override("separation", 12)
+	header.add_theme_constant_override("separation", _px(12))
 	parent.add_child(header)
 	
 	var title = Label.new()
 	title.text = "Godot Shaders"
-	title.add_theme_font_size_override("font_size", 22)
+	title.add_theme_font_size_override("font_size", _px(22))
 	header.add_child(title)
 	
 	# Tab buttons
 	var tab_box = HBoxContainer.new()
-	tab_box.add_theme_constant_override("separation", 4)
+	tab_box.add_theme_constant_override("separation", _px(4))
 	header.add_child(tab_box)
 	
 	var browse_btn = Button.new()
@@ -233,7 +252,7 @@ func _build_header(parent: Control) -> void:
 	
 	search_input = LineEdit.new()
 	search_input.placeholder_text = tr_key("search")
-	search_input.custom_minimum_size.x = 250
+	search_input.custom_minimum_size.x = _px(250)
 	search_input.text_changed.connect(_on_filter_changed)
 	header.add_child(search_input)
 	
@@ -244,7 +263,7 @@ func _build_header(parent: Control) -> void:
 
 func _build_filters(parent: Control) -> void:
 	var filters = HBoxContainer.new()
-	filters.add_theme_constant_override("separation", 16)
+	filters.add_theme_constant_override("separation", _px(16))
 	parent.add_child(filters)
 	
 	# Type
@@ -283,7 +302,7 @@ func _build_filters(parent: Control) -> void:
 func _build_pagination(parent: Control) -> void:
 	# Main row container with pagination in center and credits on right
 	var row = HBoxContainer.new()
-	row.add_theme_constant_override("separation", 0)
+	row.add_theme_constant_override("separation", _px(0))
 	parent.add_child(row)
 	
 	# Left spacer (for centering)
@@ -293,7 +312,7 @@ func _build_pagination(parent: Control) -> void:
 	
 	# Center: pagination buttons
 	var paging = HBoxContainer.new()
-	paging.add_theme_constant_override("separation", 16)
+	paging.add_theme_constant_override("separation", _px(16))
 	row.add_child(paging)
 	
 	prev_button = Button.new()
@@ -314,7 +333,7 @@ func _build_pagination(parent: Control) -> void:
 	var right_spacer = HBoxContainer.new()
 	right_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	right_spacer.alignment = BoxContainer.ALIGNMENT_END
-	right_spacer.add_theme_constant_override("separation", 4)
+	right_spacer.add_theme_constant_override("separation", _px(4))
 	row.add_child(right_spacer)
 	
 	var heart_label = Label.new()
@@ -590,13 +609,13 @@ func _apply_image_to_card(card: Control, tex: Texture2D) -> void:
 
 func _create_card(shader: Dictionary) -> Control:
 	var card = PanelContainer.new()
-	card.custom_minimum_size = Vector2(200, 280)
+	card.custom_minimum_size = _v2(200, 280)
 	card.mouse_filter = Control.MOUSE_FILTER_STOP
 	
 	var style = StyleBoxFlat.new()
 	style.bg_color = card_bg
-	style.set_corner_radius_all(8)
-	style.set_border_width_all(2)
+	style.set_corner_radius_all(_px(8))
+	style.set_border_width_all(_px(2))
 	style.border_color = Color(0.25, 0.25, 0.3)
 	card.add_theme_stylebox_override("panel", style)
 	
@@ -615,7 +634,7 @@ func _create_card(shader: Dictionary) -> Control:
 	card.mouse_exited.connect(_on_card_hover.bind(card, false))
 	
 	var vbox = VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 0)
+	vbox.add_theme_constant_override("separation", _px(0))
 	card.add_child(vbox)
 	
 	# Get category color
@@ -625,29 +644,29 @@ func _create_card(shader: Dictionary) -> Control:
 	# Category badge - ON TOP of card (above image)
 	var badge = Label.new()
 	badge.text = " " + shader.get("category", "2D").to_upper().substr(0, 12) + " "
-	badge.add_theme_font_size_override("font_size", 9)
+	badge.add_theme_font_size_override("font_size", _px(9))
 	badge.add_theme_color_override("font_color", Color.WHITE)
 	var badge_style = StyleBoxFlat.new()
 	badge_style.bg_color = cat_color
-	badge_style.set_corner_radius(CORNER_TOP_LEFT, 6)
-	badge_style.set_corner_radius(CORNER_TOP_RIGHT, 6)
-	badge_style.set_corner_radius(CORNER_BOTTOM_LEFT, 0)
-	badge_style.set_corner_radius(CORNER_BOTTOM_RIGHT, 0)
-	badge_style.content_margin_left = 8
-	badge_style.content_margin_right = 8
-	badge_style.content_margin_top = 4
-	badge_style.content_margin_bottom = 4
+	badge_style.set_corner_radius(CORNER_TOP_LEFT, _px(6))
+	badge_style.set_corner_radius(CORNER_TOP_RIGHT, _px(6))
+	badge_style.set_corner_radius(CORNER_BOTTOM_LEFT, _px(0))
+	badge_style.set_corner_radius(CORNER_BOTTOM_RIGHT, _px(0))
+	badge_style.content_margin_left = _px(8)
+	badge_style.content_margin_right = _px(8)
+	badge_style.content_margin_top = _px(4)
+	badge_style.content_margin_bottom = _px(4)
 	badge.add_theme_stylebox_override("normal", badge_style)
 	vbox.add_child(badge)
 	
 	# Image container with category-based gradient
 	var img_container = PanelContainer.new()
-	img_container.custom_minimum_size = Vector2(0, 130)
+	img_container.custom_minimum_size = _v2(0, 130)
 	img_container.name = "ImageContainer"
 	
 	var img_style = StyleBoxFlat.new()
 	img_style.bg_color = cat_color.darkened(0.5)
-	img_style.set_corner_radius_all(0)
+	img_style.set_corner_radius_all(_px(0))
 	img_container.add_theme_stylebox_override("panel", img_style)
 	vbox.add_child(img_container)
 	
@@ -671,35 +690,35 @@ func _create_card(shader: Dictionary) -> Control:
 		"PARTICLES": icon.text = "✨"
 		"FOG": icon.text = "🌫️"
 		_: icon.text = "🔷"
-	icon.add_theme_font_size_override("font_size", 36)
+	icon.add_theme_font_size_override("font_size", _px(36))
 	icon.add_theme_color_override("font_color", cat_color.lightened(0.3))
 	icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	icon_vbox.add_child(icon)
 	
 	# Content margin
 	var content_margin = MarginContainer.new()
-	content_margin.add_theme_constant_override("margin_left", 10)
-	content_margin.add_theme_constant_override("margin_right", 10)
-	content_margin.add_theme_constant_override("margin_bottom", 8)
+	content_margin.add_theme_constant_override("margin_left", _px(10))
+	content_margin.add_theme_constant_override("margin_right", _px(10))
+	content_margin.add_theme_constant_override("margin_bottom", _px(8))
 	content_margin.size_flags_vertical = SIZE_EXPAND_FILL
 	vbox.add_child(content_margin)
 	
 	var content = VBoxContainer.new()
-	content.add_theme_constant_override("separation", 3)
+	content.add_theme_constant_override("separation", _px(3))
 	content_margin.add_child(content)
 	
 	# Title
 	var title = Label.new()
 	title.text = shader.get("title", "Shader")
-	title.add_theme_font_size_override("font_size", 13)
+	title.add_theme_font_size_override("font_size", _px(13))
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD
-	title.custom_minimum_size.y = 36
+	title.custom_minimum_size.y = _px(36)
 	content.add_child(title)
 	
 	# Author
 	var author = Label.new()
 	author.text = shader.get("author", "Unknown")
-	author.add_theme_font_size_override("font_size", 11)
+	author.add_theme_font_size_override("font_size", _px(11))
 	author.add_theme_color_override("font_color", text_dim)
 	content.add_child(author)
 	
@@ -715,7 +734,7 @@ func _create_card(shader: Dictionary) -> Control:
 	
 	var lic = Label.new()
 	lic.text = shader.get("license", "CC0")
-	lic.add_theme_font_size_override("font_size", 10)
+	lic.add_theme_font_size_override("font_size", _px(10))
 	lic.add_theme_color_override("font_color", text_dim)
 	info_row.add_child(lic)
 	
@@ -726,13 +745,13 @@ func _create_card(shader: Dictionary) -> Control:
 	
 	var likes = Label.new()
 	likes.text = "♡ " + str(shader.get("likes", 0))
-	likes.add_theme_font_size_override("font_size", 10)
+	likes.add_theme_font_size_override("font_size", _px(10))
 	likes.add_theme_color_override("font_color", text_dim)
 	info_row.add_child(likes)
 	
 	# Buttons
 	var btn_row = HBoxContainer.new()
-	btn_row.add_theme_constant_override("separation", 6)
+	btn_row.add_theme_constant_override("separation", _px(6))
 	content.add_child(btn_row)
 	
 	var preview_btn = Button.new()
@@ -800,7 +819,7 @@ func _on_error(msg: String) -> void:
 func _build_preview_dialog() -> void:
 	preview_dialog = Window.new()
 	preview_dialog.title = tr_key("shader_preview")
-	preview_dialog.size = Vector2i(900, 700)
+	preview_dialog.size = _v2i(900, 700)
 	preview_dialog.transient = true
 	preview_dialog.exclusive = true
 	preview_dialog.visible = false
@@ -822,24 +841,24 @@ func _build_preview_dialog() -> void:
 	
 	var margin = MarginContainer.new()
 	margin.size_flags_horizontal = SIZE_EXPAND_FILL
-	margin.add_theme_constant_override("margin_left", 24)
-	margin.add_theme_constant_override("margin_right", 24)
-	margin.add_theme_constant_override("margin_top", 20)
-	margin.add_theme_constant_override("margin_bottom", 20)
+	margin.add_theme_constant_override("margin_left", _px(24))
+	margin.add_theme_constant_override("margin_right", _px(24))
+	margin.add_theme_constant_override("margin_top", _px(20))
+	margin.add_theme_constant_override("margin_bottom", _px(20))
 	scroll.add_child(margin)
 	
 	var vbox = VBoxContainer.new()
 	vbox.size_flags_horizontal = SIZE_EXPAND_FILL
-	vbox.add_theme_constant_override("separation", 16)
+	vbox.add_theme_constant_override("separation", _px(16))
 	margin.add_child(vbox)
 	
 	# ===== IMAGE PREVIEW =====
 	var img_container = PanelContainer.new()
 	img_container.name = "ImageContainer"
-	img_container.custom_minimum_size = Vector2(0, 250)
+	img_container.custom_minimum_size = _v2(0, 250)
 	var img_style = StyleBoxFlat.new()
 	img_style.bg_color = Color(0.15, 0.15, 0.18)
-	img_style.set_corner_radius_all(8)
+	img_style.set_corner_radius_all(_px(8))
 	img_container.add_theme_stylebox_override("panel", img_style)
 	vbox.add_child(img_container)
 	
@@ -857,24 +876,24 @@ func _build_preview_dialog() -> void:
 	
 	# ===== TITLE ROW =====
 	var title_row = HBoxContainer.new()
-	title_row.add_theme_constant_override("separation", 16)
+	title_row.add_theme_constant_override("separation", _px(16))
 	vbox.add_child(title_row)
 	
 	var title_label = Label.new()
 	title_label.name = "TitleLabel"
-	title_label.add_theme_font_size_override("font_size", 22)
+	title_label.add_theme_font_size_override("font_size", _px(22))
 	title_label.add_theme_color_override("font_color", Color.WHITE)
 	title_label.size_flags_horizontal = SIZE_EXPAND_FILL
 	title_row.add_child(title_label)
 	
 	# ===== AUTHOR & META ROW =====
 	var meta_row = HBoxContainer.new()
-	meta_row.add_theme_constant_override("separation", 16)
+	meta_row.add_theme_constant_override("separation", _px(16))
 	vbox.add_child(meta_row)
 	
 	var author_label = Label.new()
 	author_label.name = "AuthorLabel"
-	author_label.add_theme_font_size_override("font_size", 14)
+	author_label.add_theme_font_size_override("font_size", _px(14))
 	author_label.add_theme_color_override("font_color", text_dim)
 	meta_row.add_child(author_label)
 	
@@ -885,7 +904,7 @@ func _build_preview_dialog() -> void:
 	
 	var category_label = Label.new()
 	category_label.name = "CategoryLabel"
-	category_label.add_theme_font_size_override("font_size", 14)
+	category_label.add_theme_font_size_override("font_size", _px(14))
 	category_label.add_theme_color_override("font_color", accent)
 	meta_row.add_child(category_label)
 	
@@ -896,7 +915,7 @@ func _build_preview_dialog() -> void:
 	
 	var license_label = Label.new()
 	license_label.name = "LicenseLabel"
-	license_label.add_theme_font_size_override("font_size", 14)
+	license_label.add_theme_font_size_override("font_size", _px(14))
 	license_label.add_theme_color_override("font_color", Color(0.5, 0.8, 0.5))
 	meta_row.add_child(license_label)
 	
@@ -907,7 +926,7 @@ func _build_preview_dialog() -> void:
 	
 	var likes_label = Label.new()
 	likes_label.name = "LikesLabel"
-	likes_label.add_theme_font_size_override("font_size", 14)
+	likes_label.add_theme_font_size_override("font_size", _px(14))
 	likes_label.add_theme_color_override("font_color", Color(0.9, 0.5, 0.5))
 	meta_row.add_child(likes_label)
 	
@@ -918,7 +937,7 @@ func _build_preview_dialog() -> void:
 	# ===== DATE =====
 	var date_label = Label.new()
 	date_label.name = "DateLabel"
-	date_label.add_theme_font_size_override("font_size", 14)
+	date_label.add_theme_font_size_override("font_size", _px(14))
 	date_label.add_theme_color_override("font_color", text_dim)
 	meta_row.add_child(date_label)
 	
@@ -928,11 +947,11 @@ func _build_preview_dialog() -> void:
 	desc_panel.visible = false  # Hidden until loaded
 	var desc_style = StyleBoxFlat.new()
 	desc_style.bg_color = Color(0.13, 0.13, 0.16)
-	desc_style.set_corner_radius_all(6)
-	desc_style.content_margin_left = 16
-	desc_style.content_margin_right = 16
-	desc_style.content_margin_top = 12
-	desc_style.content_margin_bottom = 12
+	desc_style.set_corner_radius_all(_px(6))
+	desc_style.content_margin_left = _px(16)
+	desc_style.content_margin_right = _px(16)
+	desc_style.content_margin_top = _px(12)
+	desc_style.content_margin_bottom = _px(12)
 	desc_panel.add_theme_stylebox_override("panel", desc_style)
 	vbox.add_child(desc_panel)
 	
@@ -942,14 +961,14 @@ func _build_preview_dialog() -> void:
 	desc_label.fit_content = true
 	desc_label.scroll_active = false
 	desc_label.add_theme_color_override("default_color", Color(0.85, 0.85, 0.85))
-	desc_label.add_theme_font_size_override("normal_font_size", 14)
+	desc_label.add_theme_font_size_override("normal_font_size", _px(14))
 	desc_panel.add_child(desc_label)
 	
 	# ===== TAGS =====
 	var tags_row = HBoxContainer.new()
 	tags_row.name = "TagsRow"
 	tags_row.visible = false  # Hidden until loaded
-	tags_row.add_theme_constant_override("separation", 8)
+	tags_row.add_theme_constant_override("separation", _px(8))
 	vbox.add_child(tags_row)
 	
 	var tags_icon = Label.new()
@@ -958,7 +977,7 @@ func _build_preview_dialog() -> void:
 	
 	var tags_label = Label.new()
 	tags_label.name = "TagsLabel"
-	tags_label.add_theme_font_size_override("font_size", 12)
+	tags_label.add_theme_font_size_override("font_size", _px(12))
 	tags_label.add_theme_color_override("font_color", accent)
 	tags_label.autowrap_mode = TextServer.AUTOWRAP_WORD
 	tags_label.size_flags_horizontal = SIZE_EXPAND_FILL
@@ -967,24 +986,24 @@ func _build_preview_dialog() -> void:
 	# ===== INFO HINT =====
 	var hint_label = Label.new()
 	hint_label.text = tr_key("hint_browser")
-	hint_label.add_theme_font_size_override("font_size", 12)
+	hint_label.add_theme_font_size_override("font_size", _px(12))
 	hint_label.add_theme_color_override("font_color", text_dim)
 	vbox.add_child(hint_label)
 	
 	# ===== SHADER CODE SECTION =====
 	var code_header = Label.new()
 	code_header.text = "Shader Code"
-	code_header.add_theme_font_size_override("font_size", 16)
+	code_header.add_theme_font_size_override("font_size", _px(16))
 	code_header.add_theme_color_override("font_color", Color.WHITE)
 	vbox.add_child(code_header)
 	
 	# Code container with border
 	var code_panel = PanelContainer.new()
-	code_panel.custom_minimum_size = Vector2(0, 300)
+	code_panel.custom_minimum_size = _v2(0, 300)
 	var code_style = StyleBoxFlat.new()
 	code_style.bg_color = Color(0.08, 0.08, 0.10)
-	code_style.set_corner_radius_all(6)
-	code_style.set_border_width_all(1)
+	code_style.set_corner_radius_all(_px(6))
+	code_style.set_border_width_all(_px(1))
 	code_style.border_color = Color(0.25, 0.25, 0.3)
 	code_panel.add_theme_stylebox_override("panel", code_style)
 	vbox.add_child(code_panel)
@@ -995,8 +1014,8 @@ func _build_preview_dialog() -> void:
 	preview_code_edit.editable = false
 	preview_code_edit.gutters_draw_line_numbers = true
 	preview_code_edit.syntax_highlighter = _create_shader_highlighter()
-	preview_code_edit.add_theme_font_size_override("font_size", 13)
-	preview_code_edit.custom_minimum_size = Vector2(0, 280)
+	preview_code_edit.add_theme_font_size_override("font_size", _px(13))
+	preview_code_edit.custom_minimum_size = _v2(0, 280)
 	code_panel.add_child(preview_code_edit)
 	
 	# Loading label (overlay)
@@ -1013,7 +1032,7 @@ func _build_preview_dialog() -> void:
 	# ===== BUTTONS =====
 	var btn_row = HBoxContainer.new()
 	btn_row.alignment = BoxContainer.ALIGNMENT_END
-	btn_row.add_theme_constant_override("separation", 12)
+	btn_row.add_theme_constant_override("separation", _px(12))
 	vbox.add_child(btn_row)
 	
 	var view_btn = Button.new()
@@ -1788,18 +1807,18 @@ func _display_installed_shaders(shaders: Array) -> void:
 
 func _create_installed_card(shader: Dictionary) -> Control:
 	var card = PanelContainer.new()
-	card.custom_minimum_size = Vector2(200, 200)
+	card.custom_minimum_size = _v2(200, 200)
 	card.mouse_filter = Control.MOUSE_FILTER_STOP
 	
 	var style = StyleBoxFlat.new()
 	style.bg_color = card_bg
-	style.set_corner_radius_all(8)
-	style.set_border_width_all(2)
+	style.set_corner_radius_all(_px(8))
+	style.set_border_width_all(_px(2))
 	style.border_color = Color(0.2, 0.6, 0.3)  # Green border for installed
 	card.add_theme_stylebox_override("panel", style)
 	
 	var vbox = VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 8)
+	vbox.add_theme_constant_override("separation", _px(8))
 	card.add_child(vbox)
 	
 	# Header with category badge
@@ -1808,47 +1827,47 @@ func _create_installed_card(shader: Dictionary) -> Control:
 	
 	var badge = Label.new()
 	badge.text = " " + shader.get("category", "Unknown").to_upper() + " "
-	badge.add_theme_font_size_override("font_size", 9)
+	badge.add_theme_font_size_override("font_size", _px(9))
 	var badge_style = StyleBoxFlat.new()
 	badge_style.bg_color = Color(0.2, 0.5, 0.3)
-	badge_style.set_corner_radius_all(3)
-	badge_style.content_margin_left = 4
-	badge_style.content_margin_right = 4
-	badge_style.content_margin_top = 2
-	badge_style.content_margin_bottom = 2
+	badge_style.set_corner_radius_all(_px(3))
+	badge_style.content_margin_left = _px(4)
+	badge_style.content_margin_right = _px(4)
+	badge_style.content_margin_top = _px(2)
+	badge_style.content_margin_bottom = _px(2)
 	badge.add_theme_stylebox_override("normal", badge_style)
 	header.add_child(badge)
 	
 	# Content margin
 	var content_margin = MarginContainer.new()
-	content_margin.add_theme_constant_override("margin_left", 10)
-	content_margin.add_theme_constant_override("margin_right", 10)
-	content_margin.add_theme_constant_override("margin_bottom", 8)
+	content_margin.add_theme_constant_override("margin_left", _px(10))
+	content_margin.add_theme_constant_override("margin_right", _px(10))
+	content_margin.add_theme_constant_override("margin_bottom", _px(8))
 	content_margin.size_flags_vertical = SIZE_EXPAND_FILL
 	vbox.add_child(content_margin)
 	
 	var content = VBoxContainer.new()
-	content.add_theme_constant_override("separation", 4)
+	content.add_theme_constant_override("separation", _px(4))
 	content_margin.add_child(content)
 	
 	# Title
 	var title = Label.new()
 	title.text = shader.get("title", "Shader")
-	title.add_theme_font_size_override("font_size", 13)
+	title.add_theme_font_size_override("font_size", _px(13))
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD
 	content.add_child(title)
 	
 	# Author
 	var author = Label.new()
 	author.text = "by " + shader.get("author", "Unknown")
-	author.add_theme_font_size_override("font_size", 11)
+	author.add_theme_font_size_override("font_size", _px(11))
 	author.add_theme_color_override("font_color", text_dim)
 	content.add_child(author)
 	
 	# File path
 	var path_label = Label.new()
 	path_label.text = shader.get("filename", "")
-	path_label.add_theme_font_size_override("font_size", 10)
+	path_label.add_theme_font_size_override("font_size", _px(10))
 	path_label.add_theme_color_override("font_color", text_dim)
 	content.add_child(path_label)
 	
@@ -1859,7 +1878,7 @@ func _create_installed_card(shader: Dictionary) -> Control:
 	
 	# Buttons
 	var btn_row = HBoxContainer.new()
-	btn_row.add_theme_constant_override("separation", 6)
+	btn_row.add_theme_constant_override("separation", _px(6))
 	content.add_child(btn_row)
 	
 	var edit_btn = Button.new()
