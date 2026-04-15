@@ -1,15 +1,33 @@
 {
-  "timestamp": 1776135245,
-  "date": "2026-04-14T02:54:05.671423+00:00",
+  "timestamp": 1776221496,
+  "date": "2026-04-15T02:51:36.455759+00:00",
   "count": 2028,
   "shaders": [
+    {
+      "url": "https://godotshaders.com/shader/improved-spom-with-outline-detection-and-self-shadowing/",
+      "title": "Improved SPOM with outline detection and self shadowing.",
+      "author": "Amose05",
+      "image_url": "https://godotshaders.com/wp-content/uploads/2026/04/Screenshot-2026-04-14-122740.jpg",
+      "category": "CANVAS ITEM",
+      "likes": "6",
+      "license": "CC0"
+    },
+    {
+      "url": "https://godotshaders.com/shader/determination-waves-undertale-style/",
+      "title": "Determination Waves (Undertale Style)",
+      "author": "Dep Emily",
+      "image_url": "https://godotshaders.com/wp-content/uploads/2026/04/game.gif",
+      "category": "CANVAS ITEM",
+      "likes": "3",
+      "license": "CC0"
+    },
     {
       "url": "https://godotshaders.com/shader/spom-with-horizon-detection-self-shading-silhouette-clipping-parallax-occlusion-mapping-self-shading-horizon-trimming-erosion/",
       "title": "SPOM with horizon detection + self shading (Silhouette clipping Parallax Occlusion Mapping + Self shading + Horizon trimming / erosion)",
       "author": "Amose05",
       "image_url": "https://godotshaders.com/wp-content/uploads/2026/04/Screenshot-2026-04-13-171750.jpg",
       "category": "SPATIAL",
-      "likes": "6",
+      "likes": "13",
       "license": "CC0"
     },
     {
@@ -18,7 +36,7 @@
       "author": "ProfesorShader",
       "image_url": "https://godotshaders.com/wp-content/uploads/2026/04/blood_god.gif",
       "category": "SPATIAL",
-      "likes": "5",
+      "likes": "8",
       "license": "CC0"
     },
     {
@@ -27,7 +45,7 @@
       "author": "qDRot",
       "image_url": "https://godotshaders.com/wp-content/uploads/2026/04/invert.jpg",
       "category": "CANVAS ITEM",
-      "likes": "1",
+      "likes": "2",
       "license": "CC0"
     },
     {
@@ -36,7 +54,7 @@
       "author": "Turtle",
       "image_url": "https://godotshaders.com/wp-content/uploads/2026/04/asd.png",
       "category": "PARTICLES",
-      "likes": "3",
+      "likes": "4",
       "license": "CC0"
     },
     {
@@ -63,7 +81,7 @@
       "author": "muzi1983",
       "image_url": "https://godotshaders.com/wp-content/uploads/2026/04/42.gif",
       "category": "CANVAS ITEM",
-      "likes": "6",
+      "likes": "7",
       "license": "CC0"
     },
     {
@@ -90,7 +108,7 @@
       "author": "null_builds",
       "image_url": "https://godotshaders.com/wp-content/uploads/2026/04/low-res-ezgif.com-video-to-gif-converter-3.gif",
       "category": "CANVAS ITEM",
-      "likes": "8",
+      "likes": "14",
       "license": "CC0"
     },
     {
@@ -117,7 +135,7 @@
       "author": "binbun",
       "image_url": "https://godotshaders.com/wp-content/uploads/2026/04/scatter_glass-ezgif.com-optimize.gif",
       "category": "SPATIAL",
-      "likes": "11",
+      "likes": "13",
       "license": "CC0"
     },
     {
@@ -207,7 +225,7 @@
       "author": "stryck33",
       "image_url": "https://godotshaders.com/wp-content/uploads/2026/04/Capture-decran-2026-04-06-141111.png",
       "category": "CANVAS ITEM",
-      "likes": "1",
+      "likes": "2",
       "license": "CC0"
     },
     {
@@ -279,7 +297,7 @@
       "author": "nokken",
       "image_url": "https://godotshaders.com/wp-content/uploads/2026/04/Снимок-экрана-2026-04-04-210132.png",
       "category": "CANVAS ITEM",
-      "likes": "7",
+      "likes": "8",
       "license": "CC0"
     },
     {
@@ -306,7 +324,7 @@
       "author": "binbun",
       "image_url": "https://godotshaders.com/wp-content/uploads/2026/04/streaks_editor.gif",
       "category": "SPATIAL",
-      "likes": "9",
+      "likes": "10",
       "license": "CC0"
     },
     {
@@ -333,7 +351,7 @@
       "author": "ElSuicio",
       "image_url": "https://godotshaders.com/wp-content/uploads/2026/04/output.gif",
       "category": "SPATIAL",
-      "likes": "6",
+      "likes": "7",
       "license": "CC0"
     },
     {
@@ -351,7 +369,7 @@
       "author": "baoding",
       "image_url": "https://godotshaders.com/wp-content/uploads/2026/03/屏幕截图-2026-03-31-202958-1024x602.jpg",
       "category": "SPATIAL",
-      "likes": "12",
+      "likes": "13",
       "license": "CC0"
     },
     {
@@ -684,7 +702,7 @@
       "author": "xandwr",
       "image_url": "https://godotshaders.com/wp-content/uploads/2026/03/Screenshot-2026-03-19-182707-1024x602.jpg",
       "category": "CANVAS ITEM",
-      "likes": "41",
+      "likes": "42",
       "license": "CC0"
     },
     {
@@ -765,7 +783,7 @@
       "author": "Kureca8",
       "image_url": "https://godotshaders.com/wp-content/uploads/2026/03/Screenshot-from-2026-03-16-15-56-49-1024x614.png",
       "category": "SPATIAL",
-      "likes": "55",
+      "likes": "56",
       "license": "CC0"
     },
     {
@@ -855,7 +873,7 @@
       "author": "tentabrobpy",
       "image_url": "https://godotshaders.com/wp-content/uploads/2026/03/shafts.gif",
       "category": "SPATIAL",
-      "likes": "47",
+      "likes": "48",
       "license": "CC0"
     },
     {
@@ -882,7 +900,7 @@
       "author": "kostilus",
       "image_url": "https://godotshaders.com/wp-content/uploads/2026/03/blur_shader_preview.png",
       "category": "SPATIAL",
-      "likes": "10",
+      "likes": "11",
       "license": "CC0"
     },
     {
@@ -990,7 +1008,7 @@
       "author": "herrmarx",
       "image_url": "https://godotshaders.com/wp-content/uploads/2026/03/Screenshot-2026-03-02-112948-1024x602.jpg",
       "category": "CANVAS ITEM",
-      "likes": "10",
+      "likes": "12",
       "license": "CC0"
     },
     {
@@ -1035,7 +1053,7 @@
       "author": "Purga",
       "image_url": "https://godotshaders.com/wp-content/uploads/2026/02/shader_preview_fast.gif",
       "category": "CANVAS ITEM",
-      "likes": "47",
+      "likes": "48",
       "license": "CC0"
     },
     {
@@ -1080,7 +1098,7 @@
       "author": "m152027350@gmail.com",
       "image_url": "https://godotshaders.com/wp-content/uploads/2026/02/08e404d2-2d44-42dd-8ec6-bd65ec0868cc.jpg",
       "category": "CANVAS ITEM",
-      "likes": "6",
+      "likes": "7",
       "license": "CC0"
     },
     {
@@ -1224,7 +1242,7 @@
       "author": "sol-vin",
       "image_url": "https://godotshaders.com/wp-content/uploads/2026/02/screenshot1-1024x528.png",
       "category": "SPATIAL",
-      "likes": "12",
+      "likes": "13",
       "license": "CC0"
     },
     {
@@ -1260,7 +1278,7 @@
       "author": "binbun",
       "image_url": "https://godotshaders.com/wp-content/uploads/2026/02/zmYprM.gif",
       "category": "CANVAS ITEM",
-      "likes": "51",
+      "likes": "52",
       "license": "CC0"
     },
     {
@@ -1278,7 +1296,7 @@
       "author": "binbun",
       "image_url": "https://godotshaders.com/wp-content/uploads/2026/02/grasses2.gif",
       "category": "SPATIAL",
-      "likes": "61",
+      "likes": "62",
       "license": "CC0"
     },
     {
@@ -1314,7 +1332,7 @@
       "author": "Miaurin",
       "image_url": "https://godotshaders.com/wp-content/uploads/2026/02/thumbnail-5.gif",
       "category": "CANVAS ITEM",
-      "likes": "36",
+      "likes": "40",
       "license": "CC0"
     },
     {
@@ -1557,7 +1575,7 @@
       "author": "ROT-7",
       "image_url": "https://godotshaders.com/wp-content/uploads/2026/01/Screenshot-16_01_2026-19_14_47-1024x512.png",
       "category": "CANVAS ITEM",
-      "likes": "40",
+      "likes": "41",
       "license": "CC0"
     },
     {
@@ -1629,7 +1647,7 @@
       "author": "Tayde",
       "image_url": "https://godotshaders.com/wp-content/uploads/2026/01/Screenshot-2026-01-12-224140.png",
       "category": "CANVAS ITEM",
-      "likes": "11",
+      "likes": "12",
       "license": "CC0"
     },
     {
@@ -1674,7 +1692,7 @@
       "author": "xtarsia",
       "image_url": "https://godotshaders.com/wp-content/uploads/2026/01/a1-1-1024x547.jpg",
       "category": "SPATIAL",
-      "likes": "12",
+      "likes": "13",
       "license": "CC0"
     },
     {
@@ -1782,7 +1800,7 @@
       "author": "shadecore_dev",
       "image_url": "https://godotshaders.com/wp-content/uploads/2026/01/demo2.gif",
       "category": "CANVAS ITEM",
-      "likes": "38",
+      "likes": "39",
       "license": "CC0"
     },
     {
@@ -1944,7 +1962,7 @@
       "author": "sentinelcmd",
       "image_url": "https://godotshaders.com/wp-content/uploads/2025/12/Recording-2025-12-18-163727.gif",
       "category": "CANVAS ITEM",
-      "likes": "71",
+      "likes": "72",
       "license": "CC0"
     },
     {
@@ -2250,7 +2268,7 @@
       "author": "Pindra",
       "image_url": "https://godotshaders.com/wp-content/uploads/2025/11/Screenshot-2025-11-19-193035.png",
       "category": "SPATIAL",
-      "likes": "11",
+      "likes": "12",
       "license": "CC0"
     },
     {
@@ -2295,7 +2313,7 @@
       "author": "NaiName",
       "image_url": "https://godotshaders.com/wp-content/uploads/2025/11/shader-1.gif",
       "category": "CANVAS ITEM",
-      "likes": "14",
+      "likes": "15",
       "license": "CC0"
     },
     {
@@ -2394,7 +2412,7 @@
       "author": "Kubolong",
       "image_url": "https://godotshaders.com/wp-content/uploads/2025/11/Screenshot-2025-11-09-214722-1024x577.jpg",
       "category": "CANVAS ITEM",
-      "likes": "63",
+      "likes": "65",
       "license": "CC0"
     },
     {
@@ -2421,7 +2439,7 @@
       "author": "AivanWorld",
       "image_url": "https://godotshaders.com/wp-content/uploads/2025/11/MASK-1-1024x683.jpg",
       "category": "CANVAS ITEM",
-      "likes": "14",
+      "likes": "15",
       "license": "CC0"
     },
     {
@@ -2871,7 +2889,7 @@
       "author": "Gerardo LCDF",
       "image_url": "https://godotshaders.com/wp-content/uploads/2025/10/diamantes_comprimido.gif",
       "category": "CANVAS ITEM",
-      "likes": "41",
+      "likes": "42",
       "license": "CC0"
     },
     {
@@ -3177,7 +3195,7 @@
       "author": "CaptainLaptop",
       "image_url": "https://godotshaders.com/wp-content/uploads/2025/09/heart-1.png",
       "category": "CANVAS ITEM",
-      "likes": "5",
+      "likes": "6",
       "license": "CC0"
     },
     {
@@ -3357,7 +3375,7 @@
       "author": "lamb",
       "image_url": "https://godotshaders.com/wp-content/uploads/2025/09/amb1-1.webp",
       "category": "CANVAS ITEM",
-      "likes": "33",
+      "likes": "35",
       "license": "CC0"
     },
     {
@@ -3456,7 +3474,7 @@
       "author": "FoxLight",
       "image_url": "https://godotshaders.com/wp-content/uploads/2025/09/123-2.gif",
       "category": "CANVAS ITEM",
-      "likes": "28",
+      "likes": "29",
       "license": "CC0"
     },
     {
@@ -3582,7 +3600,7 @@
       "author": "doffu",
       "image_url": "https://godotshaders.com/wp-content/uploads/2025/08/Shader4-1024x996.jpg",
       "category": "CANVAS ITEM",
-      "likes": "26",
+      "likes": "27",
       "license": "CC0"
     },
     {
@@ -4914,7 +4932,7 @@
       "author": "HaHAjax",
       "image_url": "https://godotshaders.com/wp-content/uploads/2025/06/Screenshot-2025-06-19-135747.png",
       "category": "CANVAS ITEM",
-      "likes": "9",
+      "likes": "10",
       "license": "CC0"
     },
     {
@@ -6155,7 +6173,7 @@
       "author": "Purga",
       "image_url": "https://godotshaders.com/wp-content/uploads/2021/01/04033-ezgif.com-crop.gif",
       "category": "CANVAS ITEM",
-      "likes": "49",
+      "likes": "50",
       "license": "CC0"
     },
     {
@@ -6272,7 +6290,7 @@
       "author": "Silver637",
       "image_url": "https://godotshaders.com/wp-content/uploads/2021/01/ScreenRecording2025-03-28081050-ezgif.com-video-to-gif-converter.gif",
       "category": "CANVAS ITEM",
-      "likes": "48",
+      "likes": "49",
       "license": "CC0"
     },
     {
@@ -6407,7 +6425,7 @@
       "author": "phrbmr",
       "image_url": "https://godotshaders.com/wp-content/uploads/2021/01/Gravacao-de-Tela-2025-03-18-204524.gif",
       "category": "CANVAS ITEM",
-      "likes": "12",
+      "likes": "13",
       "license": "CC0"
     },
     {
@@ -8395,7 +8413,7 @@
       "author": "NahtreX",
       "image_url": "https://godotshaders.com/wp-content/uploads/2021/01/Grabacin2024-10-19212504-ezgif.com-speed.gif",
       "category": "CANVAS ITEM",
-      "likes": "158",
+      "likes": "159",
       "license": "CC0"
     },
     {
@@ -8584,7 +8602,7 @@
       "author": "Gerald",
       "image_url": "https://godotshaders.com/wp-content/uploads/2021/01/Untitled-10-1.jpg",
       "category": "CANVAS ITEM",
-      "likes": "32",
+      "likes": "33",
       "license": "CC0"
     },
     {
@@ -8943,7 +8961,7 @@
       "author": "Jtad",
       "image_url": "https://godotshaders.com/wp-content/uploads/2021/01/stars1-1024x677.jpg",
       "category": "CANVAS ITEM",
-      "likes": "34",
+      "likes": "35",
       "license": "CC0"
     },
     {
@@ -9033,7 +9051,7 @@
       "author": "Rendoog",
       "image_url": "https://godotshaders.com/wp-content/uploads/2021/01/0001-0126-ezgif.com-video-to-gif-converter.gif",
       "category": "SPATIAL",
-      "likes": "52",
+      "likes": "53",
       "license": "CC0"
     },
     {
@@ -9591,7 +9609,7 @@
       "author": "imjp94",
       "image_url": "https://godotshaders.com/wp-content/uploads/2021/01/thumbnail-1.png",
       "category": "CANVAS ITEM",
-      "likes": "61",
+      "likes": "62",
       "license": "CC0"
     },
     {
@@ -9852,7 +9870,7 @@
       "author": "tentabrobpy",
       "image_url": "https://godotshaders.com/wp-content/uploads/2021/01/Colorcubes.gif",
       "category": "SPATIAL",
-      "likes": "58",
+      "likes": "59",
       "license": "CC0"
     },
     {
@@ -10122,7 +10140,7 @@
       "author": "cob",
       "image_url": "https://godotshaders.com/wp-content/uploads/2021/01/Screenshot-2024-07-13-194821-1024x525.jpg",
       "category": "CANVAS ITEM",
-      "likes": "42",
+      "likes": "43",
       "license": "CC0"
     },
     {
@@ -10275,7 +10293,7 @@
       "author": "sturm_trouper",
       "image_url": "https://godotshaders.com/wp-content/uploads/2021/01/Screenshot-2024-07-02-130510-1.jpg",
       "category": "CANVAS ITEM",
-      "likes": "28",
+      "likes": "29",
       "license": "CC0"
     },
     {
@@ -11093,7 +11111,7 @@
       "author": "markdibarry",
       "image_url": "https://godotshaders.com/wp-content/uploads/2021/01/Untitled-8.png",
       "category": "CANVAS ITEM",
-      "likes": "58",
+      "likes": "59",
       "license": "CC0"
     },
     {
@@ -11102,7 +11120,7 @@
       "author": "celyk",
       "image_url": "https://godotshaders.com/wp-content/uploads/2021/01/quick-sky0.jpg",
       "category": "SKY",
-      "likes": "33",
+      "likes": "34",
       "license": "CC0"
     },
     {
@@ -11264,7 +11282,7 @@
       "author": "voyager_i",
       "image_url": "https://godotshaders.com/wp-content/uploads/2021/01/Godot_v4.2.2-stable_win64_rJ3Mp9Ts61.gif",
       "category": "CANVAS ITEM",
-      "likes": "38",
+      "likes": "39",
       "license": "CC0"
     },
     {
@@ -11687,7 +11705,7 @@
       "author": "xtarsia",
       "image_url": "https://godotshaders.com/wp-content/uploads/2021/01/Screenshot-2024-03-19-014726-1024x525.jpg",
       "category": "SPATIAL",
-      "likes": "109",
+      "likes": "110",
       "license": "CC0"
     },
     {
@@ -12596,7 +12614,7 @@
       "author": "niceOnline",
       "image_url": "https://godotshaders.com/wp-content/uploads/2021/01/liquid-example.gif",
       "category": "SPATIAL",
-      "likes": "65",
+      "likes": "66",
       "license": "CC0"
     },
     {
@@ -13063,7 +13081,7 @@
       "author": "dip",
       "image_url": "https://godotshaders.com/wp-content/uploads/2021/01/6513845eceada466126723.gif",
       "category": "SPATIAL",
-      "likes": "75",
+      "likes": "76",
       "license": "CC0"
     },
     {
@@ -13423,7 +13441,7 @@
       "author": "Arnklit",
       "image_url": "https://godotshaders.com/wp-content/uploads/2021/01/particle-flowmap-smoothing-thumbnail.jpg",
       "category": "PARTICLES",
-      "likes": "53",
+      "likes": "54",
       "license": "CC0"
     },
     {
@@ -13630,7 +13648,7 @@
       "author": "D3ZAX",
       "image_url": "https://godotshaders.com/wp-content/uploads/2021/01/preview-3-1024x564.png",
       "category": "SPATIAL",
-      "likes": "62",
+      "likes": "64",
       "license": "CC0"
     },
     {
@@ -14052,7 +14070,7 @@
       "author": "celyk",
       "image_url": "https://godotshaders.com/wp-content/uploads/2021/01/monkey_smear.jpg",
       "category": "SPATIAL",
-      "likes": "59",
+      "likes": "60",
       "license": "CC0"
     },
     {
@@ -15545,7 +15563,7 @@
       "author": "afk",
       "image_url": "https://godotshaders.com/wp-content/uploads/2021/01/skybox-1024x755.png",
       "category": "SKY",
-      "likes": "47",
+      "likes": "48",
       "license": "CC0"
     },
     {
@@ -16292,7 +16310,7 @@
       "author": "OzMaister",
       "image_url": "https://godotshaders.com/wp-content/uploads/2021/01/shine_shader.gif",
       "category": "SPATIAL",
-      "likes": "570",
+      "likes": "572",
       "license": "CC0"
     },
     {
@@ -17381,7 +17399,7 @@
       "author": "pend00",
       "image_url": "https://godotshaders.com/wp-content/uploads/2021/01/energybeams-1024x701.jpg",
       "category": "CANVAS ITEM",
-      "likes": "190",
+      "likes": "191",
       "license": "CC0"
     },
     {
@@ -18228,24 +18246,6 @@
       "image_url": "https://godotshaders.com/wp-content/uploads/2021/01/kywAtQc4ki.gif",
       "category": "CANVAS ITEM",
       "likes": "95",
-      "license": "CC0"
-    },
-    {
-      "url": "https://godotshaders.com/shader/palette-swap-no-recolor-recolor/",
-      "title": "Palette Swap (no recolor / recolor)",
-      "author": "Exuin",
-      "image_url": "https://godotshaders.com/wp-content/uploads/2021/01/Annotation-2021-03-13-224112.png",
-      "category": "CANVAS ITEM",
-      "likes": "161",
-      "license": "CC0"
-    },
-    {
-      "url": "https://godotshaders.com/shader/shapes-shader/",
-      "title": "Shapes Shader",
-      "author": "SRC Corp",
-      "image_url": "https://godotshaders.com/wp-content/uploads/2021/01/ShaderColored.png",
-      "category": "CANVAS ITEM",
-      "likes": "8",
       "license": "CC0"
     }
   ]
