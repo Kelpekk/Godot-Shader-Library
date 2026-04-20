@@ -1,18 +1,21 @@
 @tool
 extends Node
-class_name InstalledShadersManager
 
 ## Manages installed shaders in the project
+## Internal class - not exposed to users
 
 signal shaders_scanned(shaders: Array)
 
 const SETTING_SHADERS_PATH = "shader_library/general/shaders_folder"
 const DEFAULT_SHADERS_PATH = "res://shaders/shaderlib/"
 
-func _get_shaders_dir() -> String:
-	return ProjectSettings.get_setting(SETTING_SHADERS_PATH, DEFAULT_SHADERS_PATH)
-
 var installed_shaders: Array = []
+
+func _get_shaders_dir() -> String:
+	var path = ProjectSettings.get_setting(SETTING_SHADERS_PATH, DEFAULT_SHADERS_PATH)
+	if not path.ends_with("/"):
+		path += "/"
+	return path
 
 func _ready() -> void:
 	scan_installed_shaders()

@@ -18,10 +18,87 @@ func _normalize_title(title: String) -> String:
 	t = t.replace(String.chr(0x2018), "'").replace(String.chr(0x2019), "'")
 	return t
 
+# Decode HTML entities to proper characters
+func _decode_html_entities(text: String) -> String:
+	if text.is_empty():
+		return ""
+	
+	var result = text
+	
+	# Named entities
+	var named_entities = {
+		"&nbsp;": " ",
+		"&amp;": "&",
+		"&lt;": "<",
+		"&gt;": ">",
+		"&quot;": "\"",
+		"&apos;": "'",
+		"&ndash;": "-",
+		"&mdash;": "-",
+		"&lsquo;": "'",
+		"&rsquo;": "'",
+		"&ldquo;": "\"",
+		"&rdquo;": "\"",
+		"&hellip;": "...",
+		"&copy;": "©",
+		"&reg;": "®",
+		"&trade;": "™",
+		"&euro;": "€",
+		"&pound;": "£",
+		"&yen;": "¥",
+		"&cent;": "¢",
+		"&deg;": "°",
+		"&plusmn;": "±",
+		"&times;": "×",
+		"&divide;": "÷",
+		"&frac12;": "½",
+		"&frac14;": "¼",
+		"&frac34;": "¾",
+	}
+	
+	for entity in named_entities:
+		result = result.replace(entity, named_entities[entity])
+	
+	# Numeric entities (decimal): &#8220; &#8221; etc.
+	var decimal_regex = RegEx.new()
+	decimal_regex.compile("&#(\\d+);")
+	var decimal_matches = decimal_regex.search_all(result)
+	# Process in reverse to avoid position shifts
+	for i in range(decimal_matches.size() - 1, -1, -1):
+		var match_result = decimal_matches[i]
+		var code = int(match_result.get_string(1))
+		if code > 0 and code < 0x110000:  # Valid Unicode range
+			var char_str = String.chr(code)
+			result = result.substr(0, match_result.get_start()) + char_str + result.substr(match_result.get_end())
+	
+	# Hex entities: &#x201C; &#x201D; etc.
+	var hex_regex = RegEx.new()
+	hex_regex.compile("&#[xX]([0-9a-fA-F]+);")
+	var hex_matches = hex_regex.search_all(result)
+	for i in range(hex_matches.size() - 1, -1, -1):
+		var match_result = hex_matches[i]
+		var hex_str = match_result.get_string(1)
+		var code = ("0x" + hex_str).hex_to_int()
+		if code > 0 and code < 0x110000:
+			var char_str = String.chr(code)
+			result = result.substr(0, match_result.get_start()) + char_str + result.substr(match_result.get_end())
+	
+	# Normalize fancy quotes to ASCII
+	result = result.replace(String.chr(0x201C), "\"")  # Left double quote
+	result = result.replace(String.chr(0x201D), "\"")  # Right double quote
+	result = result.replace(String.chr(0x2018), "'")   # Left single quote
+	result = result.replace(String.chr(0x2019), "'")   # Right single quote
+	result = result.replace(String.chr(0x2013), "-")   # En dash
+	result = result.replace(String.chr(0x2014), "-")   # Em dash
+	result = result.replace(String.chr(0x2026), "...")  # Ellipsis
+	result = result.replace(String.chr(0x00A0), " ")   # Non-breaking space
+	
+	return result
+
 # UI Elements
 var search_input: LineEdit
 var type_option: OptionButton
-
+var license_option: OptionButton
 var sort_option: OptionButton
 var shader_grid: HFlowContainer
 var status_label: Label
@@ -73,23 +150,6 @@ var bg_color := Color(0.15, 0.15, 0.15)  # Godot editor background
 var card_bg := Color(0.2, 0.2, 0.22)
 var accent := Color(0.3, 0.5, 0.9)
 var text_dim := Color(0.6, 0.6, 0.65)
-
-# Editor UI scale (HiDPI aware)
-var ui_scale: float = 1.0
-
-func _px(value: float) -> int:
-	return maxi(0, int(round(value * ui_scale)))
-
-func _v2(x: float, y: float) -> Vector2:
-	return Vector2(_px(x), _px(y))
-
-func _v2i(x: float, y: float) -> Vector2i:
-	return Vector2i(_px(x), _px(y))
-
-func _update_ui_scale() -> void:
-	ui_scale = 1.0
-	if Engine.is_editor_hint():
-		ui_scale = EditorInterface.get_editor_scale()
 
 ## Detect image format from binary data
 func _detect_image_format(data: PackedByteArray) -> String:
@@ -145,11 +205,9 @@ func _load_image_from_buffer(data: PackedByteArray) -> Image:
 	return null
 
 func _init() -> void:
-	custom_minimum_size = _v2(800, 600)
+	custom_minimum_size = Vector2(800, 600)
 
 func _ready() -> void:
-	_update_ui_scale()
-	custom_minimum_size = _v2(800, 600)
 	_build_ui()
 	_init_components()
 	call_deferred("_start_loading")
@@ -164,14 +222,14 @@ func _build_ui() -> void:
 	# Main margin
 	var margin = MarginContainer.new()
 	margin.set_anchors_preset(PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", _px(20))
-	margin.add_theme_constant_override("margin_right", _px(20))
-	margin.add_theme_constant_override("margin_top", _px(12))
-	margin.add_theme_constant_override("margin_bottom", _px(12))
+	margin.add_theme_constant_override("margin_left", 20)
+	margin.add_theme_constant_override("margin_right", 20)
+	margin.add_theme_constant_override("margin_top", 12)
+	margin.add_theme_constant_override("margin_bottom", 12)
 	add_child(margin)
 	
 	var vbox = VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", _px(12))
+	vbox.add_theme_constant_override("separation", 12)
 	vbox.size_flags_vertical = SIZE_EXPAND_FILL
 	vbox.size_flags_horizontal = SIZE_EXPAND_FILL
 	margin.add_child(vbox)
@@ -196,7 +254,7 @@ func _build_ui() -> void:
 	status_box.add_child(spacer)
 	
 	progress_bar = ProgressBar.new()
-	progress_bar.custom_minimum_size.x = _px(150)
+	progress_bar.custom_minimum_size.x = 150
 	progress_bar.show_percentage = false
 	progress_bar.visible = false
 	status_box.add_child(progress_bar)
@@ -208,8 +266,8 @@ func _build_ui() -> void:
 	vbox.add_child(scroll_container)
 	
 	shader_grid = HFlowContainer.new()
-	shader_grid.add_theme_constant_override("h_separation", _px(12))
-	shader_grid.add_theme_constant_override("v_separation", _px(12))
+	shader_grid.add_theme_constant_override("h_separation", 12)
+	shader_grid.add_theme_constant_override("v_separation", 12)
 	shader_grid.size_flags_horizontal = SIZE_EXPAND_FILL
 	scroll_container.add_child(shader_grid)
 	
@@ -218,17 +276,17 @@ func _build_ui() -> void:
 
 func _build_header(parent: Control) -> void:
 	var header = HBoxContainer.new()
-	header.add_theme_constant_override("separation", _px(12))
+	header.add_theme_constant_override("separation", 12)
 	parent.add_child(header)
 	
 	var title = Label.new()
 	title.text = "Godot Shaders"
-	title.add_theme_font_size_override("font_size", _px(22))
+	title.add_theme_font_size_override("font_size", 22)
 	header.add_child(title)
 	
 	# Tab buttons
 	var tab_box = HBoxContainer.new()
-	tab_box.add_theme_constant_override("separation", _px(4))
+	tab_box.add_theme_constant_override("separation", 4)
 	header.add_child(tab_box)
 	
 	var browse_btn = Button.new()
@@ -252,7 +310,7 @@ func _build_header(parent: Control) -> void:
 	
 	search_input = LineEdit.new()
 	search_input.placeholder_text = tr_key("search")
-	search_input.custom_minimum_size.x = _px(250)
+	search_input.custom_minimum_size.x = 250
 	search_input.text_changed.connect(_on_filter_changed)
 	header.add_child(search_input)
 	
@@ -263,7 +321,7 @@ func _build_header(parent: Control) -> void:
 
 func _build_filters(parent: Control) -> void:
 	var filters = HBoxContainer.new()
-	filters.add_theme_constant_override("separation", _px(16))
+	filters.add_theme_constant_override("separation", 16)
 	parent.add_child(filters)
 	
 	# Type
@@ -282,6 +340,22 @@ func _build_filters(parent: Control) -> void:
 	type_option.item_selected.connect(_on_filter_changed)
 	filters.add_child(type_option)
 	
+	# License
+	var license_lbl = Label.new()
+	license_lbl.text = tr_key("license")
+	license_lbl.add_theme_color_override("font_color", text_dim)
+	filters.add_child(license_lbl)
+	
+	license_option = OptionButton.new()
+	license_option.add_item(tr_key("all_licenses"))
+	license_option.add_item("MIT")
+	license_option.add_item("CC0")
+	license_option.add_item("CC-BY")
+	license_option.add_item("Shadertoy port")
+	license_option.add_item("GNU GPL v.3")
+	license_option.item_selected.connect(_on_filter_changed)
+	filters.add_child(license_option)
+	
 	var spacer = Control.new()
 	spacer.size_flags_horizontal = SIZE_EXPAND_FILL
 	filters.add_child(spacer)
@@ -293,16 +367,17 @@ func _build_filters(parent: Control) -> void:
 	filters.add_child(sort_lbl)
 	
 	sort_option = OptionButton.new()
+	sort_option.add_item(tr_key("most_relevant"))
 	sort_option.add_item(tr_key("newest"))
-	sort_option.add_item(tr_key("popular"))
-	sort_option.add_item(tr_key("name_az"))
+	sort_option.add_item(tr_key("most_liked"))
+	sort_option.add_item(tr_key("alphabetical"))
 	sort_option.item_selected.connect(_on_filter_changed)
 	filters.add_child(sort_option)
 
 func _build_pagination(parent: Control) -> void:
 	# Main row container with pagination in center and credits on right
 	var row = HBoxContainer.new()
-	row.add_theme_constant_override("separation", _px(0))
+	row.add_theme_constant_override("separation", 0)
 	parent.add_child(row)
 	
 	# Left spacer (for centering)
@@ -312,7 +387,7 @@ func _build_pagination(parent: Control) -> void:
 	
 	# Center: pagination buttons
 	var paging = HBoxContainer.new()
-	paging.add_theme_constant_override("separation", _px(16))
+	paging.add_theme_constant_override("separation", 16)
 	row.add_child(paging)
 	
 	prev_button = Button.new()
@@ -333,7 +408,7 @@ func _build_pagination(parent: Control) -> void:
 	var right_spacer = HBoxContainer.new()
 	right_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	right_spacer.alignment = BoxContainer.ALIGNMENT_END
-	right_spacer.add_theme_constant_override("separation", _px(4))
+	right_spacer.add_theme_constant_override("separation", 4)
 	row.add_child(right_spacer)
 	
 	var heart_label = Label.new()
@@ -444,6 +519,14 @@ func _apply_filters(_arg = null) -> void:
 			return type_name.to_lower() in s.get("category", "").to_lower()
 		)
 	
+	# License filter
+	var license_idx = license_option.selected
+	if license_idx > 0:
+		var license_name = license_option.get_item_text(license_idx)
+		filtered_shaders = filtered_shaders.filter(func(s):
+			return s.get("license", "") == license_name
+		)
+	
 	# Search filter
 	var query = search_input.text.strip_edges().to_lower()
 	if not query.is_empty():
@@ -453,9 +536,9 @@ func _apply_filters(_arg = null) -> void:
 	
 	# Sort
 	match sort_option.selected:
-		1:  # Popular - convert likes to int for proper sorting
+		2:  # Most liked - convert likes to int for proper sorting
 			filtered_shaders.sort_custom(func(a, b): return int(a.get("likes", "0")) > int(b.get("likes", "0")))
-		2:  # Name - strip non-alphanumeric from start for proper sorting
+		3:  # Alphabetical - strip non-alphanumeric from start for proper sorting
 			filtered_shaders.sort_custom(func(a, b): 
 				return _normalize_title(a.get("title", "")) < _normalize_title(b.get("title", ""))
 			)
@@ -609,13 +692,13 @@ func _apply_image_to_card(card: Control, tex: Texture2D) -> void:
 
 func _create_card(shader: Dictionary) -> Control:
 	var card = PanelContainer.new()
-	card.custom_minimum_size = _v2(200, 280)
+	card.custom_minimum_size = Vector2(200, 280)
 	card.mouse_filter = Control.MOUSE_FILTER_STOP
 	
 	var style = StyleBoxFlat.new()
 	style.bg_color = card_bg
-	style.set_corner_radius_all(_px(8))
-	style.set_border_width_all(_px(2))
+	style.set_corner_radius_all(8)
+	style.set_border_width_all(2)
 	style.border_color = Color(0.25, 0.25, 0.3)
 	card.add_theme_stylebox_override("panel", style)
 	
@@ -634,7 +717,7 @@ func _create_card(shader: Dictionary) -> Control:
 	card.mouse_exited.connect(_on_card_hover.bind(card, false))
 	
 	var vbox = VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", _px(0))
+	vbox.add_theme_constant_override("separation", 0)
 	card.add_child(vbox)
 	
 	# Get category color
@@ -644,29 +727,29 @@ func _create_card(shader: Dictionary) -> Control:
 	# Category badge - ON TOP of card (above image)
 	var badge = Label.new()
 	badge.text = " " + shader.get("category", "2D").to_upper().substr(0, 12) + " "
-	badge.add_theme_font_size_override("font_size", _px(9))
+	badge.add_theme_font_size_override("font_size", 9)
 	badge.add_theme_color_override("font_color", Color.WHITE)
 	var badge_style = StyleBoxFlat.new()
 	badge_style.bg_color = cat_color
-	badge_style.set_corner_radius(CORNER_TOP_LEFT, _px(6))
-	badge_style.set_corner_radius(CORNER_TOP_RIGHT, _px(6))
-	badge_style.set_corner_radius(CORNER_BOTTOM_LEFT, _px(0))
-	badge_style.set_corner_radius(CORNER_BOTTOM_RIGHT, _px(0))
-	badge_style.content_margin_left = _px(8)
-	badge_style.content_margin_right = _px(8)
-	badge_style.content_margin_top = _px(4)
-	badge_style.content_margin_bottom = _px(4)
+	badge_style.set_corner_radius(CORNER_TOP_LEFT, 6)
+	badge_style.set_corner_radius(CORNER_TOP_RIGHT, 6)
+	badge_style.set_corner_radius(CORNER_BOTTOM_LEFT, 0)
+	badge_style.set_corner_radius(CORNER_BOTTOM_RIGHT, 0)
+	badge_style.content_margin_left = 8
+	badge_style.content_margin_right = 8
+	badge_style.content_margin_top = 4
+	badge_style.content_margin_bottom = 4
 	badge.add_theme_stylebox_override("normal", badge_style)
 	vbox.add_child(badge)
 	
 	# Image container with category-based gradient
 	var img_container = PanelContainer.new()
-	img_container.custom_minimum_size = _v2(0, 130)
+	img_container.custom_minimum_size = Vector2(0, 130)
 	img_container.name = "ImageContainer"
 	
 	var img_style = StyleBoxFlat.new()
 	img_style.bg_color = cat_color.darkened(0.5)
-	img_style.set_corner_radius_all(_px(0))
+	img_style.set_corner_radius_all(0)
 	img_container.add_theme_stylebox_override("panel", img_style)
 	vbox.add_child(img_container)
 	
@@ -690,35 +773,35 @@ func _create_card(shader: Dictionary) -> Control:
 		"PARTICLES": icon.text = "✨"
 		"FOG": icon.text = "🌫️"
 		_: icon.text = "🔷"
-	icon.add_theme_font_size_override("font_size", _px(36))
+	icon.add_theme_font_size_override("font_size", 36)
 	icon.add_theme_color_override("font_color", cat_color.lightened(0.3))
 	icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	icon_vbox.add_child(icon)
 	
 	# Content margin
 	var content_margin = MarginContainer.new()
-	content_margin.add_theme_constant_override("margin_left", _px(10))
-	content_margin.add_theme_constant_override("margin_right", _px(10))
-	content_margin.add_theme_constant_override("margin_bottom", _px(8))
+	content_margin.add_theme_constant_override("margin_left", 10)
+	content_margin.add_theme_constant_override("margin_right", 10)
+	content_margin.add_theme_constant_override("margin_bottom", 8)
 	content_margin.size_flags_vertical = SIZE_EXPAND_FILL
 	vbox.add_child(content_margin)
 	
 	var content = VBoxContainer.new()
-	content.add_theme_constant_override("separation", _px(3))
+	content.add_theme_constant_override("separation", 3)
 	content_margin.add_child(content)
 	
 	# Title
 	var title = Label.new()
 	title.text = shader.get("title", "Shader")
-	title.add_theme_font_size_override("font_size", _px(13))
+	title.add_theme_font_size_override("font_size", 13)
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD
-	title.custom_minimum_size.y = _px(36)
+	title.custom_minimum_size.y = 36
 	content.add_child(title)
 	
 	# Author
 	var author = Label.new()
 	author.text = shader.get("author", "Unknown")
-	author.add_theme_font_size_override("font_size", _px(11))
+	author.add_theme_font_size_override("font_size", 11)
 	author.add_theme_color_override("font_color", text_dim)
 	content.add_child(author)
 	
@@ -734,7 +817,7 @@ func _create_card(shader: Dictionary) -> Control:
 	
 	var lic = Label.new()
 	lic.text = shader.get("license", "CC0")
-	lic.add_theme_font_size_override("font_size", _px(10))
+	lic.add_theme_font_size_override("font_size", 10)
 	lic.add_theme_color_override("font_color", text_dim)
 	info_row.add_child(lic)
 	
@@ -745,13 +828,13 @@ func _create_card(shader: Dictionary) -> Control:
 	
 	var likes = Label.new()
 	likes.text = "♡ " + str(shader.get("likes", 0))
-	likes.add_theme_font_size_override("font_size", _px(10))
+	likes.add_theme_font_size_override("font_size", 10)
 	likes.add_theme_color_override("font_color", text_dim)
 	info_row.add_child(likes)
 	
 	# Buttons
 	var btn_row = HBoxContainer.new()
-	btn_row.add_theme_constant_override("separation", _px(6))
+	btn_row.add_theme_constant_override("separation", 6)
 	content.add_child(btn_row)
 	
 	var preview_btn = Button.new()
@@ -761,9 +844,14 @@ func _create_card(shader: Dictionary) -> Control:
 	btn_row.add_child(preview_btn)
 	
 	var install_btn = Button.new()
-	install_btn.text = tr_key("install")
+	# Check if we're in select mode (embedded in selector dialog)
+	if has_meta("select_mode") and get_meta("select_mode"):
+		install_btn.text = "Select"
+		install_btn.pressed.connect(_on_select_shader.bind(shader))
+	else:
+		install_btn.text = tr_key("install")
+		install_btn.pressed.connect(_on_install.bind(shader))
 	install_btn.size_flags_horizontal = SIZE_EXPAND_FILL
-	install_btn.pressed.connect(_on_install.bind(shader))
 	btn_row.add_child(install_btn)
 	
 	return card
@@ -792,6 +880,23 @@ func _on_refresh() -> void:
 func _on_install(shader: Dictionary) -> void:
 	shader_installer.install_shader(shader)
 
+## Select shader in select mode - install first if needed, then select
+func _on_select_shader(shader: Dictionary) -> void:
+	# Check if shader is already installed
+	if shader.has("path") and not shader.get("path", "").is_empty():
+		# Already installed - select directly
+		_select_shader_path(shader.get("path"))
+	else:
+		# Need to install first - store that we're in select mode for this install
+		set_meta("pending_select", true)
+		shader_installer.install_shader(shader)
+
+func _select_shader_path(path: String) -> void:
+	if has_meta("selector_dialog"):
+		var dialog = get_meta("selector_dialog")
+		if dialog and dialog.has_method("select_shader"):
+			dialog.select_shader(path)
+
 func _on_install_started(shader_name: String) -> void:
 	status_label.text = tr_key("installing") % shader_name
 	progress_bar.visible = true
@@ -807,6 +912,11 @@ func _on_installed(path: String) -> void:
 	# Refresh installed count
 	if installed_manager:
 		installed_manager.scan_installed_shaders()
+	
+	# If we were installing for select mode, select the shader now
+	if has_meta("pending_select") and get_meta("pending_select"):
+		set_meta("pending_select", false)
+		_select_shader_path(path)
 
 func _on_install_error(error: String) -> void:
 	status_label.text = tr_key("error_icon") % error
@@ -819,7 +929,7 @@ func _on_error(msg: String) -> void:
 func _build_preview_dialog() -> void:
 	preview_dialog = Window.new()
 	preview_dialog.title = tr_key("shader_preview")
-	preview_dialog.size = _v2i(900, 700)
+	preview_dialog.size = Vector2i(900, 700)
 	preview_dialog.transient = true
 	preview_dialog.exclusive = true
 	preview_dialog.visible = false
@@ -841,24 +951,24 @@ func _build_preview_dialog() -> void:
 	
 	var margin = MarginContainer.new()
 	margin.size_flags_horizontal = SIZE_EXPAND_FILL
-	margin.add_theme_constant_override("margin_left", _px(24))
-	margin.add_theme_constant_override("margin_right", _px(24))
-	margin.add_theme_constant_override("margin_top", _px(20))
-	margin.add_theme_constant_override("margin_bottom", _px(20))
+	margin.add_theme_constant_override("margin_left", 24)
+	margin.add_theme_constant_override("margin_right", 24)
+	margin.add_theme_constant_override("margin_top", 20)
+	margin.add_theme_constant_override("margin_bottom", 20)
 	scroll.add_child(margin)
 	
 	var vbox = VBoxContainer.new()
 	vbox.size_flags_horizontal = SIZE_EXPAND_FILL
-	vbox.add_theme_constant_override("separation", _px(16))
+	vbox.add_theme_constant_override("separation", 16)
 	margin.add_child(vbox)
 	
 	# ===== IMAGE PREVIEW =====
 	var img_container = PanelContainer.new()
 	img_container.name = "ImageContainer"
-	img_container.custom_minimum_size = _v2(0, 250)
+	img_container.custom_minimum_size = Vector2(0, 250)
 	var img_style = StyleBoxFlat.new()
 	img_style.bg_color = Color(0.15, 0.15, 0.18)
-	img_style.set_corner_radius_all(_px(8))
+	img_style.set_corner_radius_all(8)
 	img_container.add_theme_stylebox_override("panel", img_style)
 	vbox.add_child(img_container)
 	
@@ -876,24 +986,24 @@ func _build_preview_dialog() -> void:
 	
 	# ===== TITLE ROW =====
 	var title_row = HBoxContainer.new()
-	title_row.add_theme_constant_override("separation", _px(16))
+	title_row.add_theme_constant_override("separation", 16)
 	vbox.add_child(title_row)
 	
 	var title_label = Label.new()
 	title_label.name = "TitleLabel"
-	title_label.add_theme_font_size_override("font_size", _px(22))
+	title_label.add_theme_font_size_override("font_size", 22)
 	title_label.add_theme_color_override("font_color", Color.WHITE)
 	title_label.size_flags_horizontal = SIZE_EXPAND_FILL
 	title_row.add_child(title_label)
 	
 	# ===== AUTHOR & META ROW =====
 	var meta_row = HBoxContainer.new()
-	meta_row.add_theme_constant_override("separation", _px(16))
+	meta_row.add_theme_constant_override("separation", 16)
 	vbox.add_child(meta_row)
 	
 	var author_label = Label.new()
 	author_label.name = "AuthorLabel"
-	author_label.add_theme_font_size_override("font_size", _px(14))
+	author_label.add_theme_font_size_override("font_size", 14)
 	author_label.add_theme_color_override("font_color", text_dim)
 	meta_row.add_child(author_label)
 	
@@ -904,7 +1014,7 @@ func _build_preview_dialog() -> void:
 	
 	var category_label = Label.new()
 	category_label.name = "CategoryLabel"
-	category_label.add_theme_font_size_override("font_size", _px(14))
+	category_label.add_theme_font_size_override("font_size", 14)
 	category_label.add_theme_color_override("font_color", accent)
 	meta_row.add_child(category_label)
 	
@@ -915,7 +1025,7 @@ func _build_preview_dialog() -> void:
 	
 	var license_label = Label.new()
 	license_label.name = "LicenseLabel"
-	license_label.add_theme_font_size_override("font_size", _px(14))
+	license_label.add_theme_font_size_override("font_size", 14)
 	license_label.add_theme_color_override("font_color", Color(0.5, 0.8, 0.5))
 	meta_row.add_child(license_label)
 	
@@ -926,7 +1036,7 @@ func _build_preview_dialog() -> void:
 	
 	var likes_label = Label.new()
 	likes_label.name = "LikesLabel"
-	likes_label.add_theme_font_size_override("font_size", _px(14))
+	likes_label.add_theme_font_size_override("font_size", 14)
 	likes_label.add_theme_color_override("font_color", Color(0.9, 0.5, 0.5))
 	meta_row.add_child(likes_label)
 	
@@ -937,7 +1047,7 @@ func _build_preview_dialog() -> void:
 	# ===== DATE =====
 	var date_label = Label.new()
 	date_label.name = "DateLabel"
-	date_label.add_theme_font_size_override("font_size", _px(14))
+	date_label.add_theme_font_size_override("font_size", 14)
 	date_label.add_theme_color_override("font_color", text_dim)
 	meta_row.add_child(date_label)
 	
@@ -947,11 +1057,11 @@ func _build_preview_dialog() -> void:
 	desc_panel.visible = false  # Hidden until loaded
 	var desc_style = StyleBoxFlat.new()
 	desc_style.bg_color = Color(0.13, 0.13, 0.16)
-	desc_style.set_corner_radius_all(_px(6))
-	desc_style.content_margin_left = _px(16)
-	desc_style.content_margin_right = _px(16)
-	desc_style.content_margin_top = _px(12)
-	desc_style.content_margin_bottom = _px(12)
+	desc_style.set_corner_radius_all(6)
+	desc_style.content_margin_left = 16
+	desc_style.content_margin_right = 16
+	desc_style.content_margin_top = 12
+	desc_style.content_margin_bottom = 12
 	desc_panel.add_theme_stylebox_override("panel", desc_style)
 	vbox.add_child(desc_panel)
 	
@@ -960,15 +1070,18 @@ func _build_preview_dialog() -> void:
 	desc_label.bbcode_enabled = true
 	desc_label.fit_content = true
 	desc_label.scroll_active = false
+	desc_label.meta_underlined = true  # Enable underline for clickable links
+	desc_label.hint_underlined = true  # Show hint when hovering
 	desc_label.add_theme_color_override("default_color", Color(0.85, 0.85, 0.85))
-	desc_label.add_theme_font_size_override("normal_font_size", _px(14))
+	desc_label.add_theme_font_size_override("normal_font_size", 14)
+	desc_label.meta_clicked.connect(_on_link_clicked)
 	desc_panel.add_child(desc_label)
 	
 	# ===== TAGS =====
 	var tags_row = HBoxContainer.new()
 	tags_row.name = "TagsRow"
 	tags_row.visible = false  # Hidden until loaded
-	tags_row.add_theme_constant_override("separation", _px(8))
+	tags_row.add_theme_constant_override("separation", 8)
 	vbox.add_child(tags_row)
 	
 	var tags_icon = Label.new()
@@ -977,7 +1090,7 @@ func _build_preview_dialog() -> void:
 	
 	var tags_label = Label.new()
 	tags_label.name = "TagsLabel"
-	tags_label.add_theme_font_size_override("font_size", _px(12))
+	tags_label.add_theme_font_size_override("font_size", 12)
 	tags_label.add_theme_color_override("font_color", accent)
 	tags_label.autowrap_mode = TextServer.AUTOWRAP_WORD
 	tags_label.size_flags_horizontal = SIZE_EXPAND_FILL
@@ -986,24 +1099,24 @@ func _build_preview_dialog() -> void:
 	# ===== INFO HINT =====
 	var hint_label = Label.new()
 	hint_label.text = tr_key("hint_browser")
-	hint_label.add_theme_font_size_override("font_size", _px(12))
+	hint_label.add_theme_font_size_override("font_size", 12)
 	hint_label.add_theme_color_override("font_color", text_dim)
 	vbox.add_child(hint_label)
 	
 	# ===== SHADER CODE SECTION =====
 	var code_header = Label.new()
 	code_header.text = "Shader Code"
-	code_header.add_theme_font_size_override("font_size", _px(16))
+	code_header.add_theme_font_size_override("font_size", 16)
 	code_header.add_theme_color_override("font_color", Color.WHITE)
 	vbox.add_child(code_header)
 	
 	# Code container with border
 	var code_panel = PanelContainer.new()
-	code_panel.custom_minimum_size = _v2(0, 300)
+	code_panel.custom_minimum_size = Vector2(0, 300)
 	var code_style = StyleBoxFlat.new()
 	code_style.bg_color = Color(0.08, 0.08, 0.10)
-	code_style.set_corner_radius_all(_px(6))
-	code_style.set_border_width_all(_px(1))
+	code_style.set_corner_radius_all(6)
+	code_style.set_border_width_all(1)
 	code_style.border_color = Color(0.25, 0.25, 0.3)
 	code_panel.add_theme_stylebox_override("panel", code_style)
 	vbox.add_child(code_panel)
@@ -1014,8 +1127,8 @@ func _build_preview_dialog() -> void:
 	preview_code_edit.editable = false
 	preview_code_edit.gutters_draw_line_numbers = true
 	preview_code_edit.syntax_highlighter = _create_shader_highlighter()
-	preview_code_edit.add_theme_font_size_override("font_size", _px(13))
-	preview_code_edit.custom_minimum_size = _v2(0, 280)
+	preview_code_edit.add_theme_font_size_override("font_size", 13)
+	preview_code_edit.custom_minimum_size = Vector2(0, 280)
 	code_panel.add_child(preview_code_edit)
 	
 	# Loading label (overlay)
@@ -1032,7 +1145,7 @@ func _build_preview_dialog() -> void:
 	# ===== BUTTONS =====
 	var btn_row = HBoxContainer.new()
 	btn_row.alignment = BoxContainer.ALIGNMENT_END
-	btn_row.add_theme_constant_override("separation", _px(12))
+	btn_row.add_theme_constant_override("separation", 12)
 	vbox.add_child(btn_row)
 	
 	var view_btn = Button.new()
@@ -1269,11 +1382,12 @@ func _on_preview_code_loaded(result: int, response_code: int, headers: PackedStr
 func _parse_and_display_shader_info(html: String) -> void:
 	# Extract description (text before shader code)
 	var description = _extract_description(html)
+	
 	if not description.is_empty():
 		var desc_panel = preview_dialog.find_child("DescPanel", true, false)
 		var desc_lbl = preview_dialog.find_child("DescLabel", true, false)
 		if desc_panel and desc_lbl:
-			desc_lbl.text = description
+			desc_lbl.text = description  # Already contains BBCode
 			desc_panel.visible = true
 	else:
 		# Hide description panel if no description found
@@ -1287,7 +1401,7 @@ func _parse_and_display_shader_info(html: String) -> void:
 		var tags_row = preview_dialog.find_child("TagsRow", true, false)
 		var tags_lbl = preview_dialog.find_child("TagsLabel", true, false)
 		if tags_row and tags_lbl:
-			tags_lbl.text = tags
+			tags_lbl.text = _decode_html_entities(tags)
 			tags_row.visible = true
 	else:
 		var tags_row = preview_dialog.find_child("TagsRow", true, false)
@@ -1299,223 +1413,301 @@ func _parse_and_display_shader_info(html: String) -> void:
 	if not date.is_empty():
 		var date_lbl = preview_dialog.find_child("DateLabel", true, false)
 		if date_lbl:
-			date_lbl.text = "📅 " + date
+			date_lbl.text = "📅 " + _decode_html_entities(date)
 			date_lbl.visible = true
 	else:
 		var date_lbl = preview_dialog.find_child("DateLabel", true, false)
 		if date_lbl:
 			date_lbl.visible = false
 
+# Find next real <p> or <p ...> tag position (skip <path>, <pre>, etc.)
+func _find_next_p_tag(text: String, from: int) -> int:
+	var pos = from
+	while true:
+		var p_pos = text.find("<p", pos)
+		if p_pos == -1:
+			return -1
+		var next_pos = p_pos + 2
+		if next_pos >= text.length():
+			return -1
+		var nc = text.substr(next_pos, 1)
+		if nc == ">" or nc == " " or nc == "\t" or nc == "\n" or nc == "\r":
+			return p_pos
+		pos = p_pos + 1
+	return -1
+
+# Open clicked link in browser with focus
+func _on_link_clicked(meta: Variant) -> void:
+	var url = str(meta)
+	
+	# On Windows, use cmd start to open browser with automatic focus
+	# Empty string "" after start is the window title (required for URLs)
+	if OS.get_name() == "Windows":
+		OS.execute("cmd.exe", ["/c", "start", "", url])
+	else:
+		OS.shell_open(url)
+
+# Convert HTML formatting to BBCode and strip remaining tags
+func _html_to_bbcode_and_clean(text: String) -> String:
+	var result = text
+	
+	# Convert <a href="...">text</a> to [url=...]text[/url]
+	var link_regex = RegEx.new()
+	link_regex.compile("<a[^>]*href=[\"']([^\"']+)[\"'][^>]*>([^<]*)</a>")
+	var link_matches = link_regex.search_all(result)
+	for i in range(link_matches.size() - 1, -1, -1):  # Reverse to preserve positions
+		var m = link_matches[i]
+		var full_match = m.get_string()
+		var href = m.get_string(1)
+		var link_text = m.get_string(2)
+		if link_text.is_empty():
+			link_text = href
+		# Godot BBCode format: [url=href]text[/url]
+		var bbcode = "[url=" + href + "][color=#6699ff][u]" + link_text + "[/u][/color][/url]"
+		result = result.replace(full_match, bbcode)
+	
+	result = result.replace("<strong>", "[b]").replace("</strong>", "[/b]")
+	result = result.replace("<b>", "[b]").replace("</b>", "[/b]")
+	result = result.replace("<em>", "[i]").replace("</em>", "[/i]")
+	result = result.replace("<i>", "[i]").replace("</i>", "[/i]")
+	result = result.replace("<code>", "[code]").replace("</code>", "[/code]")
+	result = result.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n")
+	var tag_regex = RegEx.new()
+	tag_regex.compile("<[^>\\[]*>")
+	result = tag_regex.sub(result, "", true)
+	result = _decode_html_entities(result)
+	return result.strip_edges()
+
+# Find matching close tag handling nesting (e.g. nested <ul> inside <ul>)
+func _find_closing_tag(text: String, open_tag: String, close_tag: String, from: int) -> int:
+	var depth = 1
+	var pos = from
+	while pos < text.length():
+		var next_open = text.find(open_tag, pos)
+		var next_close = text.find(close_tag, pos)
+		if next_close == -1:
+			return -1
+		if next_open != -1 and next_open < next_close:
+			depth += 1
+			pos = next_open + open_tag.length()
+		else:
+			depth -= 1
+			if depth == 0:
+				return next_close
+			pos = next_close + close_tag.length()
+	return -1
+
 func _extract_description(html: String) -> String:
-	# Strategy: Find description content between header info and "Shader code" section
-	
-	# First, find where "Shader code" section starts - this is our end marker
-	# Look for actual heading, not CSS references
-	var shader_code_pos = html.find(">Shader code<")  # Heading tag content
-	if shader_code_pos == -1:
-		shader_code_pos = html.find("##### Shader code")  # Markdown style
-	if shader_code_pos == -1:
-		shader_code_pos = html.find("Shader code</h")  # Before closing h tag
-	if shader_code_pos == -1:
-		# Last resort - find shader_type keyword in actual code block
-		var code_block = html.find("<code")
-		if code_block != -1:
-			var shader_type_in_code = html.find("shader_type", code_block)
-			if shader_type_in_code != -1:
-				shader_code_pos = code_block
-	if shader_code_pos == -1:
-		return ""
-	
-	# Look for description start markers (try multiple approaches)
-	var start = -1
-	
-	# Approach 1: Find entry-content class and look for <p> within a reasonable range
+	# Find content area between entry-content div and Shader code section
 	var entry_start = html.find("entry-content")
-	if entry_start != -1 and entry_start < shader_code_pos:
-		# Only search for <p> within 500 chars after entry-content, not across the whole doc
-		var search_limit = mini(entry_start + 500, shader_code_pos)
-		var p_pos = html.find("<p>", entry_start)
-		if p_pos != -1 and p_pos < search_limit:
-			start = p_pos
+	if entry_start == -1:
+		return ""
+	var content_div_start = html.find(">", entry_start)
+	if content_div_start == -1:
+		return ""
+	content_div_start += 1
 	
-	# Approach 2: Find first <p> after the header section (author/date line)
-	if start == -1 or start >= shader_code_pos:
-		# Look for paragraph after author/date info which often contains "|"
-		var header_end = html.rfind("|", shader_code_pos)
-		if header_end != -1 and header_end > shader_code_pos - 5000:  # Only if | is within 5000 chars before shader code
-			var p_after = html.find("<p>", header_end)
-			if p_after != -1 and p_after < shader_code_pos:
-				start = p_after
+	var shader_code_pos = html.find(">Shader code<", content_div_start)
+	if shader_code_pos == -1:
+		shader_code_pos = html.find("Shader code</h", content_div_start)
+	if shader_code_pos == -1:
+		shader_code_pos = html.find('class="language-', content_div_start)
+	if shader_code_pos == -1:
+		return ""
 	
-	# Approach 3: Just find the last <p> block before shader code
-	if start == -1 or start >= shader_code_pos:
-		var search_pos = 0
-		var last_valid_p = -1
-		while true:
-			var p_pos = html.find("<p>", search_pos)
-			if p_pos == -1 or p_pos >= shader_code_pos:
-				break
-			# Make sure this <p> has actual content
-			var p_end = html.find("</p>", p_pos)
-			if p_end != -1 and p_end < shader_code_pos:
-				var content_check = html.substr(p_pos + 3, mini(100, p_end - p_pos - 3))
-				# Skip if it looks like navigation or header
-				if not content_check.contains("Sign in") and not content_check.contains("Toggle"):
-					last_valid_p = p_pos
-			search_pos = p_pos + 1
-		if last_valid_p != -1:
-			# Go back to find the first <p> in this description section
-			# Usually there are multiple paragraphs together
-			var desc_start = last_valid_p
-			var prev_search = last_valid_p - 500
-			if prev_search < 0:
-				prev_search = 0
-			# Find the first <p> in this cluster
-			var first_in_cluster = html.find("<p>", prev_search)
-			if first_in_cluster != -1 and first_in_cluster < last_valid_p:
-				# Check if there's a significant gap (like a header) between them
-				var between = html.substr(first_in_cluster, last_valid_p - first_in_cluster)
-				if not between.contains("<h") and not between.contains("<article"):
-					desc_start = first_in_cluster
-			start = desc_start
+	var search_area = html.substr(content_div_start, shader_code_pos - content_div_start)
+	var result_parts: Array = []
+	var para_index = 0
+	var pos = 0
+	var prev_element_end = 0
 	
-	# Approach 4: Plain text description (not wrapped in <p> tags)
-	# Look backwards from "Shader code" header for description text
-	if start == -1 or start >= shader_code_pos:
-		# Find the Shader code header position
-		var code_header_pos = shader_code_pos
-		if code_header_pos > 200:
-			# Look backwards from shader code section to find content
-			# Search for a larger area - 3000 chars before Shader code
-			var search_start = code_header_pos - 3000
-			if search_start < 0:
-				search_start = 0
-			var search_area = html.substr(search_start, code_header_pos - search_start)
-			
-			# Try multiple patterns to find the end of header info
-			var desc_start_local = -1
-			
-			# Pattern 1: Look for likes count span closing: </span> after a number
-			var likes_span = search_area.rfind("</span>")
-			if likes_span != -1:
-				# Check if there's meaningful text after it
-				var after_span = search_area.substr(likes_span + 7).strip_edges()
-				if after_span.length() > 20:
-					desc_start_local = likes_span + 7
-			
-			# Pattern 2: Look for date pattern then find next content
-			if desc_start_local == -1:
-				var date_markers = ["2026", "2025", "2024", "2023", "2022"]
-				for year in date_markers:
-					var year_pos = search_area.rfind(year)
-					if year_pos != -1:
-						# Find closing tag after year
-						var close_tag = search_area.find(">", year_pos)
-						if close_tag != -1 and close_tag < search_area.length() - 50:
-							var after_year = search_area.substr(close_tag + 1).strip_edges()
-							if after_year.length() > 20 and not after_year.begins_with("<"):
-								desc_start_local = close_tag + 1
-								break
-			
-			if desc_start_local != -1:
-				var plain_text = search_area.substr(desc_start_local)
-				# Clean HTML tags
-				var tag_regex = RegEx.new()
-				tag_regex.compile("<[^>]+>")
-				plain_text = tag_regex.sub(plain_text, "", true)
-				plain_text = plain_text.replace("&nbsp;", " ")
-				plain_text = plain_text.replace("&amp;", "&")
-				plain_text = plain_text.replace("&#8217;", "'")
-				plain_text = plain_text.replace("&#039;", "'")
-				plain_text = plain_text.strip_edges()
-				
-				# Remove "Shader code" header if captured
-				if plain_text.begins_with("Shader code"):
-					plain_text = plain_text.substr(11).strip_edges()
-				
-				# Skip navigation/menu text
-				if plain_text.length() > 10 and not plain_text.contains("Sign in") and not plain_text.contains("Toggle"):
-					if plain_text.length() > 1500:
-						plain_text = plain_text.substr(0, 1500) + "..."
-					return plain_text
+	while pos < search_area.length():
+		# Find next real <p> tag (not <path>, <pre>, etc.)
+		var next_p = _find_next_p_tag(search_area, pos)
+		var next_ul = search_area.find("<ul", pos)
+		var next_ol = search_area.find("<ol", pos)
 		
+		# Pick the earliest element
+		var min_pos = -1
+		var elem_type = ""
+		if next_p != -1:
+			min_pos = next_p
+			elem_type = "p"
+		if next_ul != -1 and (min_pos == -1 or next_ul < min_pos):
+			min_pos = next_ul
+			elem_type = "ul"
+		if next_ol != -1 and (min_pos == -1 or next_ol < min_pos):
+			min_pos = next_ol
+			elem_type = "ol"
+		
+		if elem_type.is_empty():
+			break
+		
+		if elem_type == "p":
+			# === Process paragraph ===
+			var tag_end = search_area.find(">", next_p)
+			if tag_end == -1:
+				break
+			var p_end = search_area.find("</p>", tag_end + 1)
+			if p_end == -1:
+				pos = next_p + 1
+				continue
+			
+			para_index += 1
+			pos = p_end + 4
+			prev_element_end = pos
+			
+			# Skip P1 (always navigation menu junk)
+			if para_index == 1:
+				continue
+			
+			var raw_para = search_area.substr(tag_end + 1, p_end - tag_end - 1)
+			
+			# Handle inline lists within paragraphs
+			raw_para = raw_para.replace("<ul>", "\n").replace("</ul>", "")
+			raw_para = raw_para.replace("<ol>", "\n").replace("</ol>", "")
+			var li_regex = RegEx.new()
+			li_regex.compile("<li[^>]*>")
+			raw_para = li_regex.sub(raw_para, "\n    [color=#88aaff]\u2022[/color] ", true)
+			raw_para = raw_para.replace("</li>", "")
+			
+			var para = _html_to_bbcode_and_clean(raw_para)
+			
+			# Skip empty/whitespace paragraphs
+			if para.replace(" ", "").replace("\t", "").length() < 3:
+				continue
+			
+			# Detect section headers (short text ending with colon, like "Parameters:")
+			var colon_pos = para.find(":")
+			if colon_pos > 0 and colon_pos < 40:
+				var before_colon = para.substr(0, colon_pos).replace("[b]", "").replace("[/b]", "").strip_edges()
+				var after_colon = para.substr(colon_pos + 1).strip_edges()
+				if before_colon.length() < 35 and not "\n" in before_colon:
+					if para.length() < 25 and after_colon.length() < 5:
+						# Section header (e.g. "Parameters:", "How to:")
+						para = "[b]" + para + "[/b]"
+					elif before_colon.length() < 25 and after_colon.length() > 2:
+						# List item with label (e.g. "PARAMETER - blur_sharp - ...")
+						para = "    [color=#88aaff]\u2022[/color] " + para
+			
+			result_parts.append(para)
+		
+		else:
+			# === Process list (ul or ol) ===
+			var tag_end = search_area.find(">", min_pos)
+			if tag_end == -1:
+				break
+			
+			var open_tag = "<ul" if elem_type == "ul" else "<ol"
+			var close_tag = "</ul>" if elem_type == "ul" else "</ol>"
+			var list_end = _find_closing_tag(search_area, open_tag, close_tag, tag_end + 1)
+			if list_end == -1:
+				pos = min_pos + 1
+				continue
+			
+			var list_content = search_area.substr(tag_end + 1, list_end - tag_end - 1)
+			pos = list_end + close_tag.length()
+			
+			# Check for standalone <li> header in gap before this list
+			var standalone_header = ""
+			if prev_element_end > 0 and min_pos > prev_element_end:
+				var gap = search_area.substr(prev_element_end, min_pos - prev_element_end)
+				var sli_start = gap.rfind("<li")
+				if sli_start != -1:
+					var sli_tag_end = gap.find(">", sli_start)
+					var sli_end = gap.find("</li>", sli_tag_end)
+					if sli_tag_end != -1 and sli_end != -1:
+						standalone_header = gap.substr(sli_tag_end + 1, sli_end - sli_tag_end - 1)
+						standalone_header = _html_to_bbcode_and_clean(standalone_header)
+			
+			prev_element_end = pos
+			
+			# Skip navigation list
+			if list_content.contains("Upload shader") or list_content.contains("Snippets"):
+				continue
+			# Skip CSS/junk lists
+			if list_content.contains("border-color") or list_content.contains("background-color"):
+				continue
+			
+			# Extract list items
+			var items: Array = []
+			
+			# Add standalone header if found
+			if not standalone_header.is_empty() and standalone_header.length() > 1:
+				items.append("    [color=#88aaff]\u2022[/color] [b]" + standalone_header + "[/b]")
+			
+			var li_pos = 0
+			var item_idx = 0
+			while true:
+				var li_start = list_content.find("<li", li_pos)
+				if li_start == -1:
+					break
+				var li_tag_end = list_content.find(">", li_start)
+				if li_tag_end == -1:
+					break
+				var li_end = _find_closing_tag(list_content, "<li", "</li>", li_tag_end + 1)
+				if li_end == -1:
+					li_pos = li_start + 1
+					continue
+				
+				var item_raw = list_content.substr(li_tag_end + 1, li_end - li_tag_end - 1)
+				li_pos = li_end + 5
+				
+				# Check for nested <ul> inside this <li>
+				var nested_ul_pos = item_raw.find("<ul")
+				if nested_ul_pos != -1:
+					# Extract header text before nested list
+					var header_raw = item_raw.substr(0, nested_ul_pos)
+					var header = _html_to_bbcode_and_clean(header_raw)
+					if header.length() > 0:
+						items.append("    [color=#88aaff]\u2022[/color] [b]" + header + "[/b]")
+					
+					# Extract nested items
+					var nested_end = item_raw.find("</ul>", nested_ul_pos)
+					if nested_end != -1:
+						var nested_content = item_raw.substr(nested_ul_pos, nested_end - nested_ul_pos + 5)
+						var npos = 0
+						while true:
+							var nli = nested_content.find("<li", npos)
+							if nli == -1:
+								break
+							var nli_tag_end = nested_content.find(">", nli)
+							if nli_tag_end == -1:
+								break
+							var nli_end = nested_content.find("</li>", nli_tag_end)
+							if nli_end == -1:
+								npos = nli + 1
+								continue
+							var nitem = nested_content.substr(nli_tag_end + 1, nli_end - nli_tag_end - 1)
+							npos = nli_end + 5
+							nitem = _html_to_bbcode_and_clean(nitem)
+							if nitem.length() > 3:
+								items.append("        [color=#6688dd]\u25E6[/color] " + nitem)
+					continue
+				
+				# Normal list item
+				var item = _html_to_bbcode_and_clean(item_raw)
+				if item.length() > 3:
+					item_idx += 1
+					if elem_type == "ol":
+						items.append("    " + str(item_idx) + ". " + item)
+					else:
+						if standalone_header.is_empty():
+							items.append("    [color=#88aaff]\u2022[/color] " + item)
+						else:
+							items.append("        [color=#6688dd]\u25E6[/color] " + item)
+			
+			if items.size() > 0:
+				result_parts.append("\n".join(items))
+	
+	if result_parts.is_empty():
 		return ""
 	
-	if start >= shader_code_pos:
-		return ""
-	
-	# Find where shader code section begins
-	var end = shader_code_pos
-	
-	var content = html.substr(start, end - start)
-	
-	# Skip if it contains navigation elements
-	if content.contains("Sign in") or content.contains("Toggle Menu") or content.contains("<article"):
-		return ""
-	
-	# Don't include if it's too short
-	if content.length() < 30:
-		return ""
-	
-	# Clean HTML
-	content = content.replace("<p>", "")
-	content = content.replace("</p>", "\n")
-	content = content.replace("<br>", "\n")
-	content = content.replace("<br/>", "\n")
-	content = content.replace("<br />", "\n")
-	content = content.replace("<ul>", "")
-	content = content.replace("</ul>", "")
-	content = content.replace("<li>", "• ")
-	content = content.replace("</li>", "\n")
-	content = content.replace("<strong>", "")
-	content = content.replace("</strong>", "")
-	content = content.replace("<em>", "")
-	content = content.replace("</em>", "")
-	content = content.replace("<b>", "")
-	content = content.replace("</b>", "")
-	content = content.replace("<i>", "")
-	content = content.replace("</i>", "")
-	content = content.replace("<code>", "`")
-	content = content.replace("</code>", "`")
-	content = content.replace("<h5>", "\n")
-	content = content.replace("</h5>", "\n")
-	content = content.replace("<h4>", "\n")
-	content = content.replace("</h4>", "\n")
-	content = content.replace("&nbsp;", " ")
-	content = content.replace("&amp;", "&")
-	content = content.replace("&lt;", "<")
-	content = content.replace("&gt;", ">")
-	content = content.replace("&#8211;", "–")
-	content = content.replace("&#8216;", "'")
-	content = content.replace("&#8217;", "'")
-	content = content.replace("&rsquo;", "'")
-	content = content.replace("&lsquo;", "'")
-	content = content.replace("&ldquo;", "\"")
-	content = content.replace("&rdquo;", "\"")
-	content = content.replace("&#039;", "'")
-	content = content.replace("&quot;", "\"")
-	
-	# Remove remaining HTML tags (complete and incomplete)
-	var regex = RegEx.new()
-	regex.compile("<[^>]*>?")
-	content = regex.sub(content, "", true)
-	# Also remove any leftover incomplete tags at the end
-	var incomplete_tag = content.rfind("<")
-	if incomplete_tag != -1 and content.find(">", incomplete_tag) == -1:
-		content = content.substr(0, incomplete_tag)
-	
-	# Clean up multiple newlines and spaces
+	var content = "\n\n".join(result_parts)
 	while content.contains("\n\n\n"):
 		content = content.replace("\n\n\n", "\n\n")
-	while content.contains("  "):
-		content = content.replace("  ", " ")
-	
-	content = content.strip_edges()
-	
-	# Limit length
-	if content.length() > 1500:
-		content = content.substr(0, 1500) + "..."
-	
+	if content.length() > 4000:
+		content = content.substr(0, 4000) + "..."
 	return content
 
 func _extract_tags(html: String) -> String:
@@ -1574,8 +1766,7 @@ func _extract_tags(html: String) -> String:
 	# Clean up HTML entities in tags
 	var clean_tags: Array = []
 	for tag in tags:
-		tag = tag.replace("&#039;", "'")
-		tag = tag.replace("&amp;", "&")
+		tag = _decode_html_entities(tag)
 		tag = tag.strip_edges()
 		if tag.length() > 0:
 			clean_tags.append(tag)
@@ -1704,15 +1895,7 @@ func _extract_shader_code_from_html(html: String) -> String:
 	return _clean_shader_code(code_block)
 
 func _clean_shader_code(code: String) -> String:
-	# Remove HTML entities
-	code = code.replace("&lt;", "<")
-	code = code.replace("&gt;", ">")
-	code = code.replace("&amp;", "&")
-	code = code.replace("&quot;", "\"")
-	code = code.replace("&#39;", "'")
-	code = code.replace("&nbsp;", " ")
-	
-	# Remove HTML line breaks
+	# Remove HTML line breaks first (before entity decoding)
 	code = code.replace("<br>", "\n")
 	code = code.replace("<br/>", "\n")
 	code = code.replace("<br />", "\n")
@@ -1721,6 +1904,9 @@ func _clean_shader_code(code: String) -> String:
 	var regex = RegEx.new()
 	regex.compile("<[^>]+>")
 	code = regex.sub(code, "", true)
+	
+	# Decode all HTML entities
+	code = _decode_html_entities(code)
 	
 	# Trim trailing whitespace per line
 	var lines = code.split("\n")
@@ -1807,18 +1993,18 @@ func _display_installed_shaders(shaders: Array) -> void:
 
 func _create_installed_card(shader: Dictionary) -> Control:
 	var card = PanelContainer.new()
-	card.custom_minimum_size = _v2(200, 200)
+	card.custom_minimum_size = Vector2(200, 200)
 	card.mouse_filter = Control.MOUSE_FILTER_STOP
 	
 	var style = StyleBoxFlat.new()
 	style.bg_color = card_bg
-	style.set_corner_radius_all(_px(8))
-	style.set_border_width_all(_px(2))
+	style.set_corner_radius_all(8)
+	style.set_border_width_all(2)
 	style.border_color = Color(0.2, 0.6, 0.3)  # Green border for installed
 	card.add_theme_stylebox_override("panel", style)
 	
 	var vbox = VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", _px(8))
+	vbox.add_theme_constant_override("separation", 8)
 	card.add_child(vbox)
 	
 	# Header with category badge
@@ -1827,47 +2013,47 @@ func _create_installed_card(shader: Dictionary) -> Control:
 	
 	var badge = Label.new()
 	badge.text = " " + shader.get("category", "Unknown").to_upper() + " "
-	badge.add_theme_font_size_override("font_size", _px(9))
+	badge.add_theme_font_size_override("font_size", 9)
 	var badge_style = StyleBoxFlat.new()
 	badge_style.bg_color = Color(0.2, 0.5, 0.3)
-	badge_style.set_corner_radius_all(_px(3))
-	badge_style.content_margin_left = _px(4)
-	badge_style.content_margin_right = _px(4)
-	badge_style.content_margin_top = _px(2)
-	badge_style.content_margin_bottom = _px(2)
+	badge_style.set_corner_radius_all(3)
+	badge_style.content_margin_left = 4
+	badge_style.content_margin_right = 4
+	badge_style.content_margin_top = 2
+	badge_style.content_margin_bottom = 2
 	badge.add_theme_stylebox_override("normal", badge_style)
 	header.add_child(badge)
 	
 	# Content margin
 	var content_margin = MarginContainer.new()
-	content_margin.add_theme_constant_override("margin_left", _px(10))
-	content_margin.add_theme_constant_override("margin_right", _px(10))
-	content_margin.add_theme_constant_override("margin_bottom", _px(8))
+	content_margin.add_theme_constant_override("margin_left", 10)
+	content_margin.add_theme_constant_override("margin_right", 10)
+	content_margin.add_theme_constant_override("margin_bottom", 8)
 	content_margin.size_flags_vertical = SIZE_EXPAND_FILL
 	vbox.add_child(content_margin)
 	
 	var content = VBoxContainer.new()
-	content.add_theme_constant_override("separation", _px(4))
+	content.add_theme_constant_override("separation", 4)
 	content_margin.add_child(content)
 	
 	# Title
 	var title = Label.new()
 	title.text = shader.get("title", "Shader")
-	title.add_theme_font_size_override("font_size", _px(13))
+	title.add_theme_font_size_override("font_size", 13)
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD
 	content.add_child(title)
 	
 	# Author
 	var author = Label.new()
 	author.text = "by " + shader.get("author", "Unknown")
-	author.add_theme_font_size_override("font_size", _px(11))
+	author.add_theme_font_size_override("font_size", 11)
 	author.add_theme_color_override("font_color", text_dim)
 	content.add_child(author)
 	
 	# File path
 	var path_label = Label.new()
 	path_label.text = shader.get("filename", "")
-	path_label.add_theme_font_size_override("font_size", _px(10))
+	path_label.add_theme_font_size_override("font_size", 10)
 	path_label.add_theme_color_override("font_color", text_dim)
 	content.add_child(path_label)
 	
@@ -1878,20 +2064,28 @@ func _create_installed_card(shader: Dictionary) -> Control:
 	
 	# Buttons
 	var btn_row = HBoxContainer.new()
-	btn_row.add_theme_constant_override("separation", _px(6))
+	btn_row.add_theme_constant_override("separation", 6)
 	content.add_child(btn_row)
 	
-	var edit_btn = Button.new()
-	edit_btn.text = "Edit"
-	edit_btn.size_flags_horizontal = SIZE_EXPAND_FILL
-	edit_btn.pressed.connect(_on_edit_shader.bind(shader))
-	btn_row.add_child(edit_btn)
-	
-	var delete_btn = Button.new()
-	delete_btn.text = tr_key("delete")
-	delete_btn.size_flags_horizontal = SIZE_EXPAND_FILL
-	delete_btn.pressed.connect(_on_delete_shader.bind(shader))
-	btn_row.add_child(delete_btn)
+	# Check if we're in select mode
+	if has_meta("select_mode") and get_meta("select_mode"):
+		var select_btn = Button.new()
+		select_btn.text = "Select"
+		select_btn.size_flags_horizontal = SIZE_EXPAND_FILL
+		select_btn.pressed.connect(_on_select_shader.bind(shader))
+		btn_row.add_child(select_btn)
+	else:
+		var edit_btn = Button.new()
+		edit_btn.text = "Edit"
+		edit_btn.size_flags_horizontal = SIZE_EXPAND_FILL
+		edit_btn.pressed.connect(_on_edit_shader.bind(shader))
+		btn_row.add_child(edit_btn)
+		
+		var delete_btn = Button.new()
+		delete_btn.text = tr_key("delete")
+		delete_btn.size_flags_horizontal = SIZE_EXPAND_FILL
+		delete_btn.pressed.connect(_on_delete_shader.bind(shader))
+		btn_row.add_child(delete_btn)
 	
 	return card
 

@@ -1,8 +1,8 @@
 @tool
 extends Node
-class_name ShaderInstaller
 
 ## Downloads and installs shaders from godotshaders.com
+## Internal class - not exposed to users
 
 const Translations = preload("res://addons/shader_library/api/translations.gd")
 
@@ -14,11 +14,76 @@ signal installation_failed(error: String)
 const SETTING_SHADERS_PATH = "shader_library/general/shaders_folder"
 const DEFAULT_SHADERS_PATH = "res://shaders/shaderlib/"
 
-func _get_shaders_dir() -> String:
-	return ProjectSettings.get_setting(SETTING_SHADERS_PATH, DEFAULT_SHADERS_PATH)
-
 var http_request: HTTPRequest
 var current_shader: Dictionary = {}
+
+# Decode HTML entities to proper characters
+func _decode_html_entities(text: String) -> String:
+	if text.is_empty():
+		return ""
+	
+	var result = text
+	
+	# Named entities
+	var named_entities = {
+		"&nbsp;": " ",
+		"&amp;": "&",
+		"&lt;": "<",
+		"&gt;": ">",
+		"&quot;": "\"",
+		"&apos;": "'",
+		"&ndash;": "-",
+		"&mdash;": "-",
+		"&lsquo;": "'",
+		"&rsquo;": "'",
+		"&ldquo;": "\"",
+		"&rdquo;": "\"",
+		"&hellip;": "...",
+	}
+	
+	for entity in named_entities:
+		result = result.replace(entity, named_entities[entity])
+	
+	# Numeric entities (decimal): &#8220; &#8221; etc.
+	var decimal_regex = RegEx.new()
+	decimal_regex.compile("&#(\\d+);")
+	var decimal_matches = decimal_regex.search_all(result)
+	for i in range(decimal_matches.size() - 1, -1, -1):
+		var match_result = decimal_matches[i]
+		var code = int(match_result.get_string(1))
+		if code > 0 and code < 0x110000:
+			var char_str = String.chr(code)
+			result = result.substr(0, match_result.get_start()) + char_str + result.substr(match_result.get_end())
+	
+	# Hex entities: &#x201C; etc.
+	var hex_regex = RegEx.new()
+	hex_regex.compile("&#[xX]([0-9a-fA-F]+);")
+	var hex_matches = hex_regex.search_all(result)
+	for i in range(hex_matches.size() - 1, -1, -1):
+		var match_result = hex_matches[i]
+		var hex_str = match_result.get_string(1)
+		var code = ("0x" + hex_str).hex_to_int()
+		if code > 0 and code < 0x110000:
+			var char_str = String.chr(code)
+			result = result.substr(0, match_result.get_start()) + char_str + result.substr(match_result.get_end())
+	
+	# Normalize fancy quotes to ASCII
+	result = result.replace(String.chr(0x201C), "\"")
+	result = result.replace(String.chr(0x201D), "\"")
+	result = result.replace(String.chr(0x2018), "'")
+	result = result.replace(String.chr(0x2019), "'")
+	result = result.replace(String.chr(0x2013), "-")
+	result = result.replace(String.chr(0x2014), "-")
+	result = result.replace(String.chr(0x2026), "...")
+	result = result.replace(String.chr(0x00A0), " ")
+	
+	return result
+
+func _get_shaders_dir() -> String:
+	var path = ProjectSettings.get_setting(SETTING_SHADERS_PATH, DEFAULT_SHADERS_PATH)
+	if not path.ends_with("/"):
+		path += "/"
+	return path
 
 func _ready() -> void:
 	http_request = HTTPRequest.new()
@@ -29,24 +94,21 @@ func _ready() -> void:
 	_ensure_shaders_directory()
 
 func _ensure_shaders_directory() -> void:
-	var shaders_path = _get_shaders_dir()
-	# Remove res:// prefix for directory operations
-	var relative_path = shaders_path.replace("res://", "")
-	if relative_path.ends_with("/"):
-		relative_path = relative_path.substr(0, relative_path.length() - 1)
-	
+	var shaders_dir = _get_shaders_dir()
+	# Create all directories in the path
 	var dir = DirAccess.open("res://")
 	if dir:
-		# Create each directory in the path
+		# Remove res:// prefix and split by /
+		var relative_path = shaders_dir.replace("res://", "")
 		var parts = relative_path.split("/")
 		var current_path = ""
 		for part in parts:
-			if current_path == "":
-				current_path = part
-			else:
-				current_path += "/" + part
+			if part.is_empty():
+				continue
+			current_path += part
 			if not dir.dir_exists(current_path):
 				dir.make_dir(current_path)
+			current_path += "/"
 
 ## Install a shader - downloads from its URL
 func install_shader(shader: Dictionary) -> void:
@@ -208,15 +270,7 @@ func _extract_license(html: String) -> String:
 	return "CC0"
 
 func _clean_code(code: String) -> String:
-	# Remove HTML entities
-	code = code.replace("&lt;", "<")
-	code = code.replace("&gt;", ">")
-	code = code.replace("&amp;", "&")
-	code = code.replace("&quot;", "\"")
-	code = code.replace("&#39;", "'")
-	code = code.replace("&nbsp;", " ")
-	
-	# Remove HTML line breaks
+	# Remove HTML line breaks first
 	code = code.replace("<br>", "\n")
 	code = code.replace("<br/>", "\n")
 	code = code.replace("<br />", "\n")
@@ -225,6 +279,9 @@ func _clean_code(code: String) -> String:
 	var regex = RegEx.new()
 	regex.compile("<[^>]+>")
 	code = regex.sub(code, "", true)
+	
+	# Decode all HTML entities
+	code = _decode_html_entities(code)
 	
 	# Trim trailing whitespace per line and overall
 	var lines = code.split("\n")

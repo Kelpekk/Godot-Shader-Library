@@ -1,17 +1,27 @@
 # Changelog
 
-## [1.3.0] - 2026-03-12
-
-### Added
-- `.gitattributes` - Users download only addons folder from Asset Library
+## [1.3.2] - 2026-04-09
 
 ### Fixed
-- GitHub Actions workflow permissions for auto-updates
-- Updated to Node.js 24 compatible actions
+- **Shader Description Display** - Proper HTML decoding and BBCode formatting
+  - HTML entities now decode correctly (`&#8220;` → `"`)
+  - Removed metadata clutter (title, author, dates, "Report" text)
+  - Filtered out CSS and JSON-LD junk
+  - Added BBCode formatting: bold, italic, colored bullets
+  - List items auto-formatted with bullets
+  - Section headers displayed as bold text
 
-### Changed
-- Cache duration clarified to 24 hours (daily auto-refresh)
-- Updated README documentation
+## [1.3.1] - 2026-04-07
+
+### Fixed (Backend/Scraper)
+- Fixed HTML entity decoding (`&#8220;` → `"`)
+- Extended data: descriptions, tags, license, shader code, dates
+
+## [1.3.0] - 2026-04-07
+
+### Added
+- **ShaderApplier Node** - Apply shaders directly via inspector
+- **HiDPI Support** - Proper scaling on 4K displays
 
 ## [1.2.0] - 2026-03-10
 

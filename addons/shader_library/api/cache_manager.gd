@@ -1,8 +1,8 @@
 @tool
 extends Node
-class_name ShaderCacheManager
 
 ## Manages local cache of shader data
+## Internal class - not exposed to users
 ## Downloads shader database from GitHub (updated daily via Actions)
 
 signal database_loaded(shaders: Array)
@@ -14,7 +14,7 @@ const IMAGE_CACHE_DIR = "user://shader_library_cache/images/"
 const CACHE_DURATION = 86400  # 24 hours - check for updates daily
 
 # GitHub raw URL to the shader database
-const GITHUB_DATABASE_URL = "https://raw.githubusercontent.com/Kelpekk/Godot-Shader-Library/main/data/shaders.json"
+const GITHUB_DATABASE_URL = "https://raw.githubusercontent.com/Kelpekk/shaderlibrary/main/data/shaders.json"
 
 var cached_shaders: Array = []
 var cache_timestamp: int = 0

@@ -2,31 +2,40 @@
 
 [![Godot Engine](https://img.shields.io/badge/Godot-4.x-blue?logo=godot-engine&logoColor=white)](https://godotengine.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/Version-1.3.1-orange)](CHANGELOG.md)
 
 Browse and install shaders from [godotshaders.com](https://godotshaders.com) directly in the Godot Editor!
+
+> 🎬 **[Watch Video Showcase](https://youtu.be/qrtgDjqs3Uk)** - See the plugin in action!
 
 ![Shader Library Preview](screenshots/preview.png)
 
 ## ✨ Features
 
+### Core Features
 - **🔍 Browse 2000+ Shaders** - Access the entire godotshaders.com library
-- **🔎 Search & Filter** - Find shaders by name, author, or category (Spatial, Canvas Item, etc.)
-- **📥 One-Click Install** - Download shaders directly to your project
-- **👁️ Preview** - View shader details, description, tags, and code before installing
+- **🔎 Smart Search & Filter** - Find shaders by name, author, or category (Spatial, Canvas Item, Particles, Sky, Fog)
+- **📥 One-Click Install** - Download shaders directly to your project with a single click
+- **👁️ Rich Preview** - View full shader details:
+  - 📸 High-quality preview image
+  - 📝 Complete description with clickable links
+  - 🏷️ Tags and categories
+  - 💻 Full shader code
+  - 👤 Author info and license
+  - 🔗 Direct link to godotshaders.com
+
+### Workflow Tools
+- **🎯 ShaderApplier Node** - Apply shaders via custom inspector node
+  - Supports 30+ node types (2D & 3D)
+  - Browse library directly from inspector
+  - Create new shaders with templates
+- **📦 Installed Manager** - View, open, and delete installed shaders
 - **💾 Smart Caching** - 24-hour cache with daily auto-updates
-- **🌍 Multi-Language** - Supports English, Polish, German, Spanish, French, Chinese, Japanese, Russian, Portuguese
-- **🎯 Godot Native UI** - Seamless integration with Godot Editor
+- **🖥️ HiDPI Support** - Perfect scaling on 4K/high-DPI displays
+- **🌍 Multi-Language** - 9 languages supported
+- **🎨 Native Godot UI** - Seamless integration with editor theme
 
 ## 📦 Installation
-
-### From GitHub
-
-1. Download this repository (Code → Download ZIP)
-2. Copy the `addons/shader_library` folder to your Godot project
-3. Open your project in Godot 4.x
-4. Go to **Project → Project Settings → Plugins**
-5. Enable **Shader Library**
-6. Click on **Shadery** tab in the top menu bar
 
 ### From Godot Asset Library
 
@@ -36,6 +45,15 @@ Browse and install shaders from [godotshaders.com](https://godotshaders.com) dir
 4. Click **Download** and **Install**
 5. Enable in **Project Settings → Plugins**
 
+### From GitHub
+
+1. Download this repository (Code → Download ZIP)
+2. Copy the `addons/shader_library` folder to your Godot project
+3. Open your project in Godot 4.x
+4. Go to **Project → Project Settings → Plugins**
+5. Enable **Shader Library**
+6. Click on **ShaderLib** tab in the top menu bar
+
 ## 🚀 Usage
 
 ### Browse Shaders
@@ -43,17 +61,9 @@ Browse and install shaders from [godotshaders.com](https://godotshaders.com) dir
 2. Browse through shader cards with previews
 3. Use pagination to navigate (40 shaders per page)
 
-### Search
-Type in the search box and press Enter to find specific shaders.
-
-### Filter by Type
-Use the dropdown to filter by:
-- All Types
-- Spatial (3D)
-- Canvas Item (2D)
-- Particles
-- Sky
-- Fog
+### Search & Filter
+- Type in the search box and press Enter
+- Use dropdown to filter by: All, Spatial (3D), Canvas Item (2D), Particles, Sky, Fog
 
 ### Preview Shader
 Click **Preview** to see:
@@ -66,21 +76,38 @@ Click **Preview** to see:
 ### Install Shader
 Click **Install** to download the shader to `res://shaders/shaderlib/` folder.
 
+### Manage Installed
+1. Switch to **Installed** tab
+2. View all installed shaders
+3. Click to open shader in editor
+4. Delete shaders with confirmation
+
+### ShaderApplier Node
+1. Add **ShaderApplier** node as child of any supported node:
+   - **2D (CanvasItem)**: Sprite2D, AnimatedSprite2D, ColorRect, TextureRect, Panel, NinePatchRect, Line2D, Polygon2D, Label, GPUParticles2D, CPUParticles2D, Node2D, Control, and all CanvasItem descendants
+   - **3D**: MeshInstance3D, Sprite3D, AnimatedSprite3D, MultiMeshInstance3D, Label3D, CSGShape3D, GPUParticles3D, CPUParticles3D
+2. In the inspector, click the shader selector dropdown
+3. Select **"📚 Shader Library"** to browse and install shaders
+4. Shader is automatically applied to the parent node
+
 ## 📁 Structure
 
 ```
 addons/shader_library/
-├── plugin.cfg          # Plugin configuration
-├── plugin.gd           # Main plugin entry point
-├── icon.svg            # Plugin icon
 ├── api/
-│   ├── cache_manager.gd      # Downloads shader database from GitHub
-│   ├── installed_manager.gd  # Track installed shaders
-│   ├── shader_installer.gd   # Download & install shaders
-│   └── translations.gd       # Multi-language support
+│   ├── cache_manager.gd        # Downloads shader database
+│   ├── installed_manager.gd    # Track installed shaders
+│   ├── shader_installer.gd     # Download & install shaders
+│   └── translations.gd         # Multi-language support
 └── ui/
-    ├── shader_browser.gd     # Main UI logic
-    └── shader_browser.tscn   # UI scene
+    ├── shader_browser.gd       # Main UI logic
+    ├── shader_browser.tscn     # UI scene
+    └── shader_selector_dialog.gd # Shader selector for inspector
+├── icon.png                    # Addon icon
+├── plugin.cfg                  # Plugin configuration
+├── plugin.gd                   # Main plugin entry point
+├── shader_applier_inspector.gd # Custom inspector plugin
+├── shader_applier.gd           # ShaderApplier custom node
 ```
 
 ## 🌐 Supported Languages
@@ -115,10 +142,13 @@ Contributions are welcome! Feel free to:
 
 MIT License - see [LICENSE](LICENSE) file.
 
+All shader authors retain their original licenses (CC0, MIT, or GPL v3).
+
 ## 🙏 Credits
 
 - Shaders from [godotshaders.com](https://godotshaders.com)
-- All shader authors retain their original licenses
+- HiDPI Support - [@hapenia](https://github.com/hapenia)
+- Video Showcase - [Watch on YouTube](https://youtu.be/qrtgDjqs3Uk)
 
 ---
 

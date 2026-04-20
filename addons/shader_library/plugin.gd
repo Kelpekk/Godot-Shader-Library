@@ -1,17 +1,28 @@
 @tool
 extends EditorPlugin
 
+var shader_browser: Control
+var shader_applier_inspector: EditorInspectorPlugin
+
 const SETTING_SHADERS_PATH = "shader_library/general/shaders_folder"
 const SETTING_PREVIOUS_PATH = "shader_library/internal/previous_shaders_folder"
 const DEFAULT_SHADERS_PATH = "res://shaders/shaderlib/"
 
-var shader_browser: Control
-
 func _enter_tree() -> void:
+	# Register project settings
 	_register_project_settings()
 	
 	# Check if shaders need to be migrated
 	_check_and_migrate_shaders()
+	
+	# Register ShaderApplier custom node
+	var shader_applier_script = preload("res://addons/shader_library/shader_applier.gd")
+	var icon = get_editor_interface().get_base_control().get_theme_icon("Shader", "EditorIcons")
+	add_custom_type("ShaderApplier", "Node", shader_applier_script, icon)
+	
+	# Register inspector plugin for ShaderApplier
+	shader_applier_inspector = preload("res://addons/shader_library/shader_applier_inspector.gd").new()
+	add_inspector_plugin(shader_applier_inspector)
 	
 	# Create shader browser control
 	var script = load("res://addons/shader_library/ui/shader_browser.gd")
@@ -27,21 +38,15 @@ func _enter_tree() -> void:
 	_make_visible(false)
 
 func _exit_tree() -> void:
+	# Remove custom type
+	remove_custom_type("ShaderApplier")
+	
+	# Remove inspector plugin
+	if shader_applier_inspector:
+		remove_inspector_plugin(shader_applier_inspector)
+	
 	if shader_browser:
 		shader_browser.queue_free()
-
-func _has_main_screen() -> bool:
-	return true
-
-func _get_plugin_name() -> String:
-	return "ShaderLib"
-
-func _get_plugin_icon() -> Texture2D:
-	return get_editor_interface().get_base_control().get_theme_icon("CanvasItem", "EditorIcons")
-
-func _make_visible(visible: bool) -> void:
-	if shader_browser:
-		shader_browser.visible = visible
 
 func _register_project_settings() -> void:
 	# Shaders folder path
@@ -157,3 +162,16 @@ func _ensure_directory(path: String) -> void:
 				current_path += "/" + part
 			if not dir.dir_exists(current_path):
 				dir.make_dir(current_path)
+
+func _has_main_screen() -> bool:
+	return true
+
+func _get_plugin_name() -> String:
+	return "ShaderLib"
+
+func _get_plugin_icon() -> Texture2D:
+	return get_editor_interface().get_base_control().get_theme_icon("CanvasItem", "EditorIcons")
+
+func _make_visible(visible: bool) -> void:
+	if shader_browser:
+		shader_browser.visible = visible

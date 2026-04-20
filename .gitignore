@@ -6,6 +6,17 @@
 # Cache
 shader_library_cache/
 
+# Python
+__pycache__/
+*.pyc
+
+# Test files
+scripts/test_*.py
+scripts/test_*.html
+scripts/debug_*.html
+scripts/final_*.html
+scripts/data/
+
 # OS
 .DS_Store
 Thumbs.db
