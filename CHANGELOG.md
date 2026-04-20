@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.3.2] - 2026-04-20
+
+### Fixed
+- **License Detection** - Fixed scraper license detection to correctly identify all license types
+  - CC0: 1508 shaders
+  - MIT: 466 shaders
+  - Shadertoy port: 101 shaders
+  - GNU GPL v.3: 20 shaders
+
+### Changed
+- **Shader Database** - Updated to 2095 shaders with accurate license information
+
 ## [1.3.1] - 2026-04-19
 
 ### Added
