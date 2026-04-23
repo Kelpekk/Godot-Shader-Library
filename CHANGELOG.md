@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.3.3] - 2026-04-23
+
+### Fixed
+- **Critical Parse Error** - Fixed shader browser not loading due to missing `update_checker.gd` file
+  - Removed references to non-existent `UpdateChecker` class that was causing parse errors
+  - Shader library window now loads correctly on plugin activation
+  - Auto-update feature temporarily disabled until proper implementation
+  - All update-related functions commented out to prevent future errors
+
+### Changed
+- Temporarily disabled auto-update system for stability
+- Update button removed from UI until feature is fully implemented
+
+### Technical
+- Commented out `UpdateChecker` preload and initialization
+- Disabled update-related signal connections and callbacks
+- All update UI elements temporarily removed
+
 ## [1.3.2] - 2026-04-22
 
 ### Added
