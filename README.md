@@ -155,10 +155,6 @@ MIT License - see [LICENSE](LICENSE) file.
 
 All shader authors retain their original licenses (CC0, MIT, or GPL v3).
 
-## Changelog
-
-See [CHANGELOG.md](CHANGELOG.md) for version history.
-
 ## 🙏 Credits
 
 - Shaders from [godotshaders.com](https://godotshaders.com)
