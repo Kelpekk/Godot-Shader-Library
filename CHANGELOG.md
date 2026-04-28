@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.3.4] - 2026-04-28
+
+### Added
+- **Update Notification System** - Non-intrusive version checking and update notifications
+  - Checks GitHub releases API every 24 hours for new plugin versions
+  - Shows "Update Available" button in UI when new version is detected
+  - Displays version comparison and changelog preview in dialog
+  - Links directly to GitHub releases page for manual updates
+  - Semantic version comparison ensures accurate version detection
+  - Respects 24-hour cache system to minimize API requests
+  - No automatic installation - users update manually via Godot AssetLib or GitHub
+
+### Changed
+- **Documentation Updates** - Improved update process clarity
+  - Added warning about Godot AssetLib update limitation (requires plugin disable/reinstall)
+  - Documented manual update process with clear step-by-step instructions
+  - Added recommendation to use GitHub installation for easier updates
+  - Removed references to non-existent auto-update system from documentation
+
+### Technical
+- New `UpdateChecker` class in `api/update_checker.gd`
+- GitHub API integration: `/repos/Kelpekk/Godot-Shader-Library/releases/latest`
+- Version caching and comparison system
+- UI integration with shader browser
+
 ## [1.3.3] - 2026-04-23
 
 ### Fixed
