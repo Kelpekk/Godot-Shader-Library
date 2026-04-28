@@ -30,11 +30,7 @@ Browse and install shaders from [godotshaders.com](https://godotshaders.com) dir
   - Browse library directly from inspector
   - Create new shaders with templates
 - **📦 Installed Manager** - View, open, and delete installed shaders
-- **� Auto-Update System** - Automatic update detection and one-click installation
-  - Checks for new plugin versions on GitHub
-  - Shows update notification when available
-  - Downloads and installs updates automatically
-  - Restarts editor to apply changes
+
 - **�💾 Smart Caching** - 24-hour cache with daily auto-updates
 - **🖥️ HiDPI Support** - Perfect scaling on 4K/high-DPI displays
 - **🌍 Multi-Language** - 9 languages supported
@@ -50,14 +46,24 @@ Browse and install shaders from [godotshaders.com](https://godotshaders.com) dir
 4. Click **Download** and **Install**
 5. Enable in **Project Settings → Plugins**
 
+> ⚠️ **Updating from AssetLib**: Due to a [Godot limitation](https://github.com/godotengine/godot/issues/52891), AssetLib cannot update existing addons. To update:
+> 1. **Disable** the plugin in Project Settings → Plugins
+> 2. **Delete** the `res://addons/shader_library/` folder from your project
+> 3. **Reinstall** from AssetLib
+> 4. **Re-enable** the plugin
+>
+> Alternatively, update via GitHub (see below) which supports direct replacement.
+
 ### From GitHub
 
-1. Download this repository (Code → Download ZIP)
+1. Download the [latest release](https://github.com/Kelpekk/Godot-Shader-Library/releases/latest) (Code → Download ZIP)
 2. Copy the `addons/shader_library` folder to your Godot project
 3. Open your project in Godot 4.x
 4. Go to **Project → Project Settings → Plugins**
 5. Enable **Shader Library**
 6. Click on **ShaderLib** tab in the top menu bar
+
+> 💡 **Tip**: Installing from GitHub allows easy updates - just replace the addon folder with the new version.
 
 ## 🚀 Usage
 
@@ -103,8 +109,7 @@ addons/shader_library/
 │   ├── cache_manager.gd        # Downloads shader database
 │   ├── installed_manager.gd    # Track installed shaders
 │   ├── shader_installer.gd     # Download & install shaders
-│   ├── translations.gd         # Multi-language support
-│   └── update_checker.gd       # Auto-update system
+│   └── translations.gd         # Multi-language support
 └── ui/
     ├── shader_browser.gd       # Main UI logic
     ├── shader_browser.tscn     # UI scene
@@ -115,30 +120,6 @@ addons/shader_library/
 ├── shader_applier_inspector.gd # Custom inspector plugin
 ├── shader_applier.gd           # ShaderApplier custom node
 ```
-
-## ⚙️ Configuration
-
-### Auto-Update System
-
-The plugin can automatically check for updates from GitHub. To configure:
-
-1. Open `addons/shader_library/plugin.cfg`
-2. In the `[updates]` section, set your GitHub repository:
-   ```ini
-   [updates]
-   # GitHub repository for checking updates (format: username/repository)
-   github_repo="YOUR_USERNAME/godot-shader-library"
-   # Set to false to disable auto-update checks
-   auto_check=true
-   ```
-3. The plugin will check for updates 2 seconds after startup
-4. When an update is available, an "Update Available" button appears in the toolbar
-5. Click to download and install - the editor will restart automatically
-
-**For Plugin Developers:**
-- Create releases on GitHub with version tags (e.g., `v1.4.0`)
-- Include a `.zip` file with the addon in the release assets
-- The plugin compares versions and notifies users automatically
 
 ## 🌐 Supported Languages
 
