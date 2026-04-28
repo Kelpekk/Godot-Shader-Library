@@ -107,7 +107,7 @@ func force_check() -> void:
 	last_check_time = 0
 	check_for_updates()
 
-func _on_release_data_received(result: int, code: int, headers: PackedStringArray, body: PackedByteArray) -> void:
+func _on_release_data_received(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
 	checking = false
 	
 	if result != HTTPRequest.RESULT_SUCCESS:

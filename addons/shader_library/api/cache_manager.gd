@@ -94,7 +94,7 @@ func fetch_from_github() -> void:
 	if error != OK:
 		database_error.emit("Failed to connect to GitHub")
 
-func _on_database_downloaded(result: int, code: int, headers: PackedStringArray, body: PackedByteArray) -> void:
+func _on_database_downloaded(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
 	if result != HTTPRequest.RESULT_SUCCESS or code != 200:
 		database_error.emit("Failed to download shader database")
 		return
@@ -166,8 +166,8 @@ func _detect_image_format(data: PackedByteArray) -> String:
 func get_image_cache_path(url: String) -> String:
 	if url.is_empty():
 		return ""
-	var hash = url.md5_text()
-	var base_path = IMAGE_CACHE_DIR + hash
+	var url_hash = url.md5_text()
+	var base_path = IMAGE_CACHE_DIR + url_hash
 	
 	# Check for existing cached file in any format
 	for ext in [".png", ".jpg", ".webp", ".gif"]:
@@ -181,8 +181,8 @@ func get_image_cache_path(url: String) -> String:
 func has_cached_image(url: String) -> bool:
 	if url.is_empty():
 		return false
-	var hash = url.md5_text()
-	var base_path = IMAGE_CACHE_DIR + hash
+	var url_hash = url.md5_text()
+	var base_path = IMAGE_CACHE_DIR + url_hash
 	
 	for ext in [".png", ".jpg", ".webp", ".gif"]:
 		if FileAccess.file_exists(base_path + ext):
@@ -194,7 +194,7 @@ func cache_image(url: String, data: PackedByteArray) -> String:
 	if url.is_empty() or data.is_empty():
 		return ""
 	
-	var hash = url.md5_text()
+	var url_hash = url.md5_text()
 	var format = _detect_image_format(data)
 	
 	var ext = ".bin"

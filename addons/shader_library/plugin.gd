@@ -17,7 +17,7 @@ func _enter_tree() -> void:
 	
 	# Register ShaderApplier custom node
 	var shader_applier_script = preload("res://addons/shader_library/shader_applier.gd")
-	var icon = get_editor_interface().get_base_control().get_theme_icon("Shader", "EditorIcons")
+	var icon = EditorInterface.get_base_control().get_theme_icon("Shader", "EditorIcons")
 	add_custom_type("ShaderApplier", "Node", shader_applier_script, icon)
 	
 	# Register inspector plugin for ShaderApplier
@@ -34,7 +34,7 @@ func _enter_tree() -> void:
 	shader_browser.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	
 	# Add to editor main screen (not bottom panel)
-	get_editor_interface().get_editor_main_screen().add_child(shader_browser)
+	EditorInterface.get_editor_main_screen().add_child(shader_browser)
 	_make_visible(false)
 
 func _exit_tree() -> void:
@@ -91,7 +91,7 @@ func _migrate_shaders(from_path: String, to_path: String) -> void:
 	# Collect files to move
 	from_dir.list_dir_begin()
 	var file_name = from_dir.get_next()
-	var moved_count = 0
+	var _moved_count = 0
 	
 	while file_name != "":
 		if not from_dir.current_is_dir() and file_name.ends_with(".gdshader"):
@@ -112,12 +112,7 @@ func _migrate_shaders(from_path: String, to_path: String) -> void:
 					
 					# Delete original
 					from_dir.remove(file_name)
-					moved_count += 1
-		
-		file_name = from_dir.get_next()
-	
-	from_dir.list_dir_end()
-	
+				_moved_count += 1
 	# Also move .uid files
 	from_dir = DirAccess.open(from_path)
 	if from_dir:
@@ -170,7 +165,7 @@ func _get_plugin_name() -> String:
 	return "ShaderLib"
 
 func _get_plugin_icon() -> Texture2D:
-	return get_editor_interface().get_base_control().get_theme_icon("CanvasItem", "EditorIcons")
+	return EditorInterface.get_base_control().get_theme_icon("CanvasItem", "EditorIcons")
 
 func _make_visible(visible: bool) -> void:
 	if shader_browser:

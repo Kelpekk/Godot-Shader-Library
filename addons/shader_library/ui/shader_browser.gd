@@ -650,7 +650,7 @@ func _load_next_image() -> void:
 			current_image_cards[slot] = null
 			current_image_urls[slot] = ""
 
-func _on_image_loaded(result: int, code: int, headers: PackedStringArray, body: PackedByteArray, slot: int) -> void:
+func _on_image_loaded(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray, slot: int) -> void:
 	active_downloads = maxi(0, active_downloads - 1)
 	
 	var card = current_image_cards[slot]
@@ -1328,7 +1328,7 @@ func _load_preview_image(url: String) -> void:
 	img_http.request_completed.connect(_on_preview_image_loaded.bind(img_http, url))
 	img_http.request(url)
 
-func _on_preview_image_loaded(result: int, code: int, headers: PackedStringArray, body: PackedByteArray, http: HTTPRequest, url: String) -> void:
+func _on_preview_image_loaded(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray, http: HTTPRequest, url: String) -> void:
 	http.queue_free()
 	
 	if result != HTTPRequest.RESULT_SUCCESS or code != 200:
@@ -1374,7 +1374,7 @@ func _apply_preview_image(tex: Texture2D) -> void:
 	img_container.add_child(tex_rect)
 	img_container.move_child(tex_rect, 0)
 
-func _on_preview_code_loaded(result: int, response_code: int, headers: PackedStringArray, body: PackedByteArray) -> void:
+func _on_preview_code_loaded(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
 	var loading_lbl = preview_dialog.find_child("LoadingLabel", true, false)
 	if loading_lbl:
 		loading_lbl.visible = false
