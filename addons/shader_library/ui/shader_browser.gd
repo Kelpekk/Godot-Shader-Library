@@ -4,8 +4,7 @@ extends Control
 ## Shader Library UI - with image loading and localization
 
 const Translations = preload("res://addons/shader_library/api/translations.gd")
-# UpdateChecker removed - feature disabled for v1.3.4
-# const UpdateChecker = preload("res://addons/shader_library/api/update_checker.gd")
+const UpdateChecker = preload("res://addons/shader_library/api/update_checker.gd")
 
 # Helper function for translations
 func tr_key(key: String) -> String:
@@ -109,13 +108,13 @@ var prev_button: Button
 var next_button: Button
 var page_label: Label
 var scroll_container: ScrollContainer
-# var update_button: Button  # Disabled for v1.3.4
+var update_button: Button
 
 # Components
 var cache_manager: Node
 var shader_installer: Node
 var installed_manager: Node
-# var update_checker: UpdateChecker  # Disabled for v1.3.4
+var update_checker: UpdateChecker
 
 # Update state
 var pending_update_url: String = ""
@@ -329,13 +328,12 @@ func _build_header(parent: Control) -> void:
 	header.add_child(refresh_btn)
 	
 	# Update button (hidden by default, shown when update is available)
-	# Disabled for v1.3.4 - update checker feature not yet implemented
-	# update_button = Button.new()
-	# update_button.text = "Update Available"
-	# update_button.modulate = Color(0.4, 1.0, 0.4)  # Green tint
-	# update_button.visible = false
-	# update_button.pressed.connect(_on_update_clicked)
-	# header.add_child(update_button)
+	update_button = Button.new()
+	update_button.text = "Update Available"
+	update_button.modulate = Color(0.4, 1.0, 0.4)  # Green tint
+	update_button.visible = false
+	update_button.pressed.connect(_on_update_clicked)
+	header.add_child(update_button)
 
 func _build_filters(parent: Control) -> void:
 	var filters = HBoxContainer.new()
@@ -479,17 +477,17 @@ func _init_components() -> void:
 	installed_manager = Node.new()
 	installed_manager.set_script(load("res://addons/shader_library/api/installed_manager.gd"))
 	add_child(installed_manager)
+	installed_manager.shaders_scanned.connect(_on_installed_scanned)
 	
-	# Update checker - Disabled for v1.3.4
-	# update_checker = UpdateChecker.new()
-	# update_checker.update_available.connect(_on_update_available)
-	# update_checker.update_check_completed.connect(_on_update_check_completed)
-	# update_checker.update_installed.connect(_on_update_installed)
-	# update_checker.update_error.connect(_on_update_error)
+	# Update checker
+	update_checker = UpdateChecker.new()
+	add_child(update_checker)
+	update_checker.update_available.connect(_on_update_available)
+	update_checker.update_check_completed.connect(_on_update_check_completed)
+	update_checker.update_error.connect(_on_update_error)
 	
 	# Check for updates on startup (delayed to not block UI)
-	# get_tree().create_timer(2.0).timeout.connect(func(): update_checker.check_for_updates())
-	installed_manager.shaders_scanned.connect(_on_installed_scanned)
+	get_tree().create_timer(2.0).timeout.connect(func(): update_checker.check_for_updates())
 	
 	# Connect to cache manager signals (for GitHub download)
 	cache_manager.database_loaded.connect(_on_shaders_loaded)
@@ -2136,100 +2134,59 @@ func _on_delete_shader(shader: Dictionary) -> void:
 	add_child(confirm)
 	confirm.popup_centered()
 
-## Update system callbacks - DISABLED for v1.3.4
-## Feature will be re-enabled in future version once update_checker.gd is implemented
+## Update system callbacks
 
-# func _on_update_available(new_version: String, current_version: String, download_url: String, changelog: String) -> void:
-# 	# Store update info
-# 	pending_update_url = download_url
-# 	pending_update_version = new_version
-# 	pending_changelog = changelog
-# 	
-# 	# Show update button
-# 	if update_button:
-# 		update_button.text = "Update to v" + new_version
-# 		update_button.visible = true
-# 		update_button.tooltip_text = "New version available!\n\nCurrent: v" + current_version + "\nLatest: v" + new_version
+func _on_update_available(version: String, url: String, changelog: String) -> void:
+	# Store update info
+	pending_update_url = url
+	pending_update_version = version
+	pending_changelog = changelog
+	
+	# Show update button
+	if update_button:
+		update_button.text = "Update to v" + version
+		update_button.visible = true
+		var current = update_checker._get_current_version()
+		update_button.tooltip_text = "New version available!\n\nCurrent: v" + current + "\nLatest: v" + version
 
-# func _on_update_check_completed(has_update: bool) -> void:
-# 	if not has_update:
-# 		# Silently complete - no update available
-# 		pass
+func _on_update_check_completed(has_update: bool) -> void:
+	if not has_update:
+		# Silently complete - no update available
+		pass
 
-# func _on_update_clicked() -> void:
-# 	# Show update dialog
-# 	var dialog = AcceptDialog.new()
-# 	dialog.title = "Plugin Update Available"
-# 	dialog.dialog_text = "A new version of Shader Library is available!\n\n"
-# 	dialog.dialog_text += "Current version: v" + update_checker.current_version + "\n"
-# 	dialog.dialog_text += "New version: v" + pending_update_version + "\n\n"
-# 	
-# 	if not pending_changelog.is_empty():
-# 		dialog.dialog_text += "Changelog:\n" + pending_changelog.substr(0, 300)
-# 		if pending_changelog.length() > 300:
-# 			dialog.dialog_text += "..."
-# 	
-# 	dialog.dialog_text += "\n\nDo you want to download and install the update?\nThe editor will restart after installation."
-# 	
-# 	# Create custom buttons
-# 	dialog.get_ok_button().text = "Update Now"
-# 	var cancel_btn = dialog.add_cancel_button("Later")
-# 	
-# 	dialog.confirmed.connect(func():
-# 		_start_update_download()
-# 	)
-# 	
-# 	add_child(dialog)
-# 	dialog.popup_centered(Vector2(500, 400))
+func _on_update_clicked() -> void:
+	# Show update dialog with option to open GitHub releases
+	var dialog = AcceptDialog.new()
+	dialog.title = "Plugin Update Available"
+	var current = update_checker._get_current_version()
+	dialog.dialog_text = "A new version of Shader Library is available!\n\n"
+	dialog.dialog_text += "Current version: v" + current + "\n"
+	dialog.dialog_text += "New version: v" + pending_update_version + "\n\n"
+	
+	if not pending_changelog.is_empty():
+		dialog.dialog_text += "Changelog:\n" + pending_changelog.substr(0, 300)
+		if pending_changelog.length() > 300:
+			dialog.dialog_text += "..."
+	
+	dialog.dialog_text += "\n\nTo update:\n"
+	dialog.dialog_text += "1. Disable the plugin in Project Settings\n"
+	dialog.dialog_text += "2. Delete the addons/shader_library folder\n"
+	dialog.dialog_text += "3. Download the new version from GitHub\n"
+	dialog.dialog_text += "4. Re-enable the plugin\n\n"
+	dialog.dialog_text += "Click 'Open GitHub' to visit the releases page."
+	
+	dialog.get_ok_button().text = "Open GitHub"
+	dialog.add_cancel_button("Later")
+	
+	dialog.confirmed.connect(func():
+		if not pending_update_url.is_empty():
+			OS.shell_open(pending_update_url)
+	)
+	
+	add_child(dialog)
+	dialog.popup_centered(Vector2(500, 400))
 
-# func _start_update_download() -> void:
-# 	if update_button:
-# 		update_button.disabled = true
-# 		update_button.text = "Downloading..."
-# 	
-# 	status_label.text = "Downloading update v" + pending_update_version + "..."
-# 	progress_bar.visible = true
-# 	progress_bar.value = 0
-# 	
-# 	update_checker.download_and_install_update(pending_update_url)
-
-# func _on_update_installed() -> void:
-# 	# Update was successfully installed
-# 	var dialog = AcceptDialog.new()
-# 	dialog.title = "Update Installed"
-# 	dialog.dialog_text = "Shader Library has been updated to v" + pending_update_version + "!\n\n"
-# 	dialog.dialog_text += "The editor will now restart to apply changes."
-# 	dialog.get_ok_button().text = "Restart Now"
-# 	
-# 	dialog.confirmed.connect(func():
-# 		update_checker.restart_editor()
-# 	)
-# 	
-# 	dialog.close_requested.connect(func():
-# 		update_checker.restart_editor()
-# 	)
-# 	
-# 	add_child(dialog)
-# 	dialog.popup_centered()
-# 	
-# 	# Auto-restart after 3 seconds if user doesn't click
-# 	get_tree().create_timer(3.0).timeout.connect(func():
-# 		if is_instance_valid(dialog) and dialog.visible:
-# 			update_checker.restart_editor()
-# 	)
-
-# func _on_update_error(error_message: String) -> void:
-# 	if update_button:
-# 		update_button.disabled = false
-# 		update_button.text = "Update to v" + pending_update_version
-# 	
-# 	status_label.text = "Update failed: " + error_message
-# 	progress_bar.visible = false
-# 	
-# 	var dialog = AcceptDialog.new()
-# 	dialog.title = "Update Error"
-# 	dialog.dialog_text = "Failed to update the plugin:\n\n" + error_message
-# 	dialog.dialog_text += "\n\nYou can manually update by downloading from GitHub."
-# 	add_child(dialog)
-# 	dialog.popup_centered()
+func _on_update_error(error_message: String) -> void:
+	# Silently fail - don't bother user with update check errors
+	pass
 
