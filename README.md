@@ -2,7 +2,7 @@
 
 [![Godot Engine](https://img.shields.io/badge/Godot-4.x-blue?logo=godot-engine&logoColor=white)](https://godotengine.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-1.3.3-orange)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-1.3.4-orange)](CHANGELOG.md)
 
 Browse and install shaders from [godotshaders.com](https://godotshaders.com) directly in the Godot Editor!
 
