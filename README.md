@@ -4,6 +4,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/Version-1.3.4-orange)](CHANGELOG.md)
 
+> **Disclaimer:** This is an **unofficial** plugin and is not affiliated with or endorsed by [godotshaders.com](https://godotshaders.com).
+
 Browse and install shaders from [godotshaders.com](https://godotshaders.com) directly in the Godot Editor!
 
 > 🎬 **[Watch Video Showcase](https://youtu.be/qrtgDjqs3Uk)** - See the plugin in action!

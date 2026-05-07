@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.3.4.1] - 2026-05-07
+
+### Changed
+- Added unofficial plugin disclaimer to README and Asset Library description, as requested by godotshaders.com
+
 ## [1.3.4] - 2026-04-28
 
 ### Added
