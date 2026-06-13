@@ -10,7 +10,8 @@ Browse and install shaders from [godotshaders.com](https://godotshaders.com) dir
 
 > 🎬 **[Watch Video Showcase](https://youtu.be/qrtgDjqs3Uk)** - See the plugin in action!
 
-![Shader Library Preview](screenshots/preview.png)
+![Shader Library Preview](screenshots/preview1.png)
+![Shader Library Preview](screenshots/preview2.png)
 
 ## ✨ Features
 
