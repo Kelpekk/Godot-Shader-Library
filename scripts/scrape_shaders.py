@@ -203,18 +203,37 @@ def parse_shader_card(article) -> Optional[Dict[str, Any]]:
     author_elem = article.select_one(".gds-shader-card__author")
     shader["author"] = safe_get_text(author_elem, "Unknown")
     
-    # Cover image (from background-image style)
+    # Cover image (from background-image style, video poster, or img element)
     cover = article.select_one(".gds-shader-card__cover")
     if cover:
         style = cover.get("style", "")
         match = re.search(r'url\(["\']?([^)"\']+)["\']?\)', style)
         if match:
             img_url = match.group(1)
-            # Handle relative URLs
             if img_url and not img_url.startswith("http"):
                 img_url = urljoin(BASE_URL, img_url)
             if validate_url(img_url):
                 shader["image_url"] = img_url
+
+        if "image_url" not in shader:
+            video = cover.find("video")
+            if video:
+                poster = video.get("poster", "")
+                if poster:
+                    if not poster.startswith("http"):
+                        poster = urljoin(BASE_URL, poster)
+                    if validate_url(poster):
+                        shader["image_url"] = poster
+
+        if "image_url" not in shader:
+            img = cover.find("img")
+            if img:
+                src = img.get("src", "")
+                if src and not src.startswith("data:"):
+                    if not src.startswith("http"):
+                        src = urljoin(BASE_URL, src)
+                    if validate_url(src):
+                        shader["image_url"] = src
     
     # Category/Type (SPATIAL, CANVAS ITEM, etc.)
     type_elem = article.select_one(".gds-shader-card__type")
@@ -248,12 +267,29 @@ def parse_shader_card(article) -> Optional[Dict[str, Any]]:
     else:
         shader["likes"] = 0
     
+    # Extract video URL from cover element (separate from image_url)
+    if cover:
+        video_elem = cover.find("video")
+        if video_elem:
+            video_src = video_elem.get("src", "")
+            if not video_src:
+                source_elem = video_elem.find("source")
+                if source_elem:
+                    video_src = source_elem.get("src", "")
+            if video_src and not video_src.startswith("data:"):
+                if not video_src.startswith("http"):
+                    video_src = urljoin(BASE_URL, video_src)
+                if validate_url(video_src):
+                    shader["video_url"] = video_src
+
     # Default values for fields that require detail page
     shader["license"] = "CC0"
     shader["description"] = ""
     shader["tags"] = []
     shader["shader_code"] = ""
-    
+    if "video_url" not in shader:
+        shader["video_url"] = ""
+
     return shader
 
 
@@ -362,6 +398,21 @@ def fetch_shader_details(shader: Dict[str, Any]) -> Dict[str, Any]:
                         shader["shader_code"] = clean_shader_code(text)
                         break
         
+        # Video URL from detail page (overrides or fills missing video_url)
+        if not shader.get("video_url"):
+            video_elem = soup.find("video")
+            if video_elem:
+                video_src = video_elem.get("src", "")
+                if not video_src:
+                    source_elem = video_elem.find("source")
+                    if source_elem:
+                        video_src = source_elem.get("src", "")
+                if video_src and not video_src.startswith("data:"):
+                    if not video_src.startswith("http"):
+                        video_src = urljoin(BASE_URL, video_src)
+                    if validate_url(video_src):
+                        shader["video_url"] = video_src
+
         # Publication date
         date_elem = soup.select_one("time[datetime], .entry-date, .post-date, .gds-shader-date")
         if date_elem:
@@ -384,6 +435,72 @@ def fetch_shader_details(shader: Dict[str, Any]) -> Dict[str, Any]:
         print(f"    Error parsing details for {url}: {e}")
     
     return shader
+
+
+def fetch_missing_media(shaders: List[Dict[str, Any]]) -> None:
+    """Fetch og:image and video_url from detail pages for shaders missing media."""
+    missing_image = [s for s in shaders if not s.get("image_url")]
+    missing_video = [s for s in shaders if not s.get("video_url")]
+    # Process all shaders that are missing at least one media type
+    to_fetch = list({s["url"]: s for s in missing_image + missing_video}.values())
+    if not to_fetch:
+        return
+
+    print(f"\nFetching media for {len(to_fetch)} shaders with missing image or video...", flush=True)
+
+    for shader in to_fetch:
+        url = shader.get("url")
+        if not url:
+            continue
+
+        html_content = fetch_page(url)
+        if not html_content:
+            time.sleep(REQUEST_DELAY)
+            continue
+
+        soup = BeautifulSoup(html_content, "html.parser")
+
+        # --- Image URL (only if missing) ---
+        if not shader.get("image_url"):
+            img_url = ""
+
+            og_image = soup.find("meta", property="og:image")
+            if og_image:
+                img_url = og_image.get("content", "")
+
+            if not img_url:
+                tw_image = soup.find("meta", attrs={"name": "twitter:image"})
+                if tw_image:
+                    img_url = tw_image.get("content", "")
+
+            if not img_url:
+                video = soup.find("video")
+                if video:
+                    img_url = video.get("poster", "")  # poster is an image, not video
+
+            if img_url and validate_url(img_url):
+                shader["image_url"] = img_url
+                print(f"  Found thumbnail for: {shader['title']}", flush=True)
+            else:
+                print(f"  No thumbnail found for: {shader['title']}", flush=True)
+
+        # --- Video URL (only if missing) ---
+        if not shader.get("video_url"):
+            video = soup.find("video")
+            if video:
+                video_src = video.get("src", "")
+                if not video_src:
+                    source = video.find("source")
+                    if source:
+                        video_src = source.get("src", "")
+                if video_src and not video_src.startswith("data:"):
+                    if not video_src.startswith("http"):
+                        video_src = urljoin(BASE_URL, video_src)
+                    if validate_url(video_src):
+                        shader["video_url"] = video_src
+                        print(f"  Found video for: {shader['title']}", flush=True)
+
+        time.sleep(REQUEST_DELAY)
 
 
 def build_license_mapping() -> Dict[str, str]:
@@ -537,6 +654,19 @@ def scrape_all_shaders() -> List[Dict[str, Any]]:
                     errors.append(f"Error fetching details for {shader.get('title', 'unknown')}: {e}")
                 time.sleep(DETAIL_REQUEST_DELAY)
     
+    # Fetch thumbnails and video URLs for shaders missing media
+    fetch_missing_media(all_shaders)
+
+    # GIF image_urls are animated previews - treat them as video_url too
+    gif_video_count = 0
+    for shader in all_shaders:
+        img = shader.get("image_url", "")
+        if img.lower().endswith(".gif") and not shader.get("video_url"):
+            shader["video_url"] = img
+            gif_video_count += 1
+    if gif_video_count:
+        print(f"\nMarked {gif_video_count} GIF previews as video_url.", flush=True)
+
     # Apply accurate license from mapping (overrides any parsed value)
     # This runs regardless of FETCH_DETAILS setting
     print("\nApplying accurate license information from website filters...", flush=True)
@@ -617,25 +747,33 @@ def main():
     with_code = 0
     with_description = 0
     with_tags = 0
-    
+    with_image = 0
+    with_video = 0
+
     for shader in valid_shaders:
         cat = shader.get("category", "UNKNOWN")
         categories[cat] = categories.get(cat, 0) + 1
-        
+
         lic = shader.get("license", "UNKNOWN")
         licenses[lic] = licenses.get(lic, 0) + 1
-        
+
         if shader.get("shader_code"):
             with_code += 1
         if shader.get("description"):
             with_description += 1
         if shader.get("tags"):
             with_tags += 1
-    
+        if shader.get("image_url"):
+            with_image += 1
+        if shader.get("video_url"):
+            with_video += 1
+
     print("\nStatistics:")
     print(f"  Shaders with code: {with_code}")
     print(f"  Shaders with description: {with_description}")
     print(f"  Shaders with tags: {with_tags}")
+    print(f"  Shaders with image: {with_image}")
+    print(f"  Shaders with video: {with_video}")
     print(f"\nCategories:")
     for cat, count in sorted(categories.items(), key=lambda x: -x[1]):
         print(f"  {cat}: {count}")

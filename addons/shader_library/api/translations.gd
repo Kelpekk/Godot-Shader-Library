@@ -7,6 +7,12 @@ extends RefCounted
 
 static var _current_locale: String = ""
 
+# Cached references to the dicts we'd otherwise look up on every t() call.
+# Resolved lazily on first t() / refreshed by refresh_locale().
+static var _primary_dict: Dictionary = {}   # exact-locale match (e.g. "pl_PL")
+static var _lang_dict: Dictionary = {}      # language fallback (e.g. "pl")
+static var _english_dict: Dictionary = {}   # final fallback
+
 static var TRANSLATIONS: Dictionary = {
 	"en": {
 		"loading": "Loading...",
@@ -51,6 +57,7 @@ static var TRANSLATIONS: Dictionary = {
 		"deleted": "Deleted: %s",
 		"delete_error": "Error deleting shader",
 		"hint_browser": "💡 Open in browser to see videos, live preview and additional materials",
+		"watch_video": "Watch Video",
 		"connecting": "Connecting to website...",
 		"credits": "Shaders powered by",
 	},
@@ -97,6 +104,7 @@ static var TRANSLATIONS: Dictionary = {
 		"deleted": "Usunięto: %s",
 		"delete_error": "Błąd usuwania shadera",
 		"hint_browser": "💡 Otwórz w przeglądarce aby zobaczyć filmy, live preview i dodatkowe materiały",
+		"watch_video": "Oglądaj wideo",
 		"connecting": "Łączenie ze stroną...",
 		"credits": "Shadery dzięki",
 	},
@@ -143,6 +151,7 @@ static var TRANSLATIONS: Dictionary = {
 		"deleted": "Gelöscht: %s",
 		"delete_error": "Fehler beim Löschen",
 		"hint_browser": "💡 Im Browser öffnen für Videos, Live-Vorschau und mehr",
+		"watch_video": "Video ansehen",
 		"connecting": "Verbinde mit Website...",
 	},
 	"es": {
@@ -188,6 +197,7 @@ static var TRANSLATIONS: Dictionary = {
 		"deleted": "Eliminado: %s",
 		"delete_error": "Error al eliminar shader",
 		"hint_browser": "💡 Abre en el navegador para ver videos, vista previa en vivo y más",
+		"watch_video": "Ver video",
 		"connecting": "Conectando al sitio web...",
 	},
 	"fr": {
@@ -233,6 +243,7 @@ static var TRANSLATIONS: Dictionary = {
 		"deleted": "Supprimé: %s",
 		"delete_error": "Erreur lors de la suppression",
 		"hint_browser": "💡 Ouvrez dans le navigateur pour les vidéos et l'aperçu en direct",
+		"watch_video": "Regarder la vidéo",
 		"connecting": "Connexion au site web...",
 	},
 	"zh_CN": {
@@ -278,6 +289,7 @@ static var TRANSLATIONS: Dictionary = {
 		"deleted": "已删除: %s",
 		"delete_error": "删除着色器时出错",
 		"hint_browser": "💡 在浏览器中打开以查看视频和实时预览",
+		"watch_video": "观看视频",
 		"connecting": "连接网站中...",
 	},
 	"ja": {
@@ -320,6 +332,7 @@ static var TRANSLATIONS: Dictionary = {
 		"deleted": "削除しました: %s",
 		"delete_error": "シェーダーの削除エラー",
 		"hint_browser": "💡 ブラウザで開いて動画やライブプレビューを見る",
+		"watch_video": "動画を見る",
 		"connecting": "ウェブサイトに接続中...",
 	},
 	"ru": {
@@ -362,6 +375,7 @@ static var TRANSLATIONS: Dictionary = {
 		"deleted": "Удалено: %s",
 		"delete_error": "Ошибка удаления шейдера",
 		"hint_browser": "💡 Откройте в браузере для видео и превью",
+		"watch_video": "Смотреть видео",
 		"connecting": "Подключение к сайту...",
 	},
 	"pt_BR": {
@@ -404,6 +418,7 @@ static var TRANSLATIONS: Dictionary = {
 		"deleted": "Excluído: %s",
 		"delete_error": "Erro ao excluir shader",
 		"hint_browser": "💡 Abra no navegador para ver vídeos e prévia ao vivo",
+		"watch_video": "Assistir vídeo",
 		"connecting": "Conectando ao site...",
 	},
 }
@@ -428,22 +443,28 @@ static func _detect_locale() -> String:
 static func refresh_locale() -> void:
 	_current_locale = ""
 	_current_locale = _detect_locale()
+	_primary_dict = {}
+	_lang_dict = {}
+	_english_dict = {}
+
+static func _ensure_dicts_resolved() -> void:
+	if not _english_dict.is_empty():
+		return  # already cached
+	var locale = get_locale()
+	_primary_dict = TRANSLATIONS.get(locale, {})
+	var lang = locale.split("_")[0]
+	_lang_dict = TRANSLATIONS.get(lang, {}) if lang != locale else {}
+	_english_dict = TRANSLATIONS.get("en", {})
 
 static func t(key: String) -> String:
-	var locale = get_locale()
-	
-	# Try exact match first
-	if TRANSLATIONS.has(locale) and TRANSLATIONS[locale].has(key):
-		return TRANSLATIONS[locale][key]
-	
-	# Try language without region (e.g., "pl_PL" -> "pl")
-	var lang = locale.split("_")[0]
-	if TRANSLATIONS.has(lang) and TRANSLATIONS[lang].has(key):
-		return TRANSLATIONS[lang][key]
-	
-	# Fallback to English
-	if TRANSLATIONS["en"].has(key):
-		return TRANSLATIONS["en"][key]
-	
-	# Return key if nothing found
+	# Hot path — called dozens of times per card. We resolve the locale dicts
+	# once and then do at most three direct .get() lookups per call.
+	if _english_dict.is_empty():
+		_ensure_dicts_resolved()
+	var v = _primary_dict.get(key)
+	if v != null: return v
+	v = _lang_dict.get(key)
+	if v != null: return v
+	v = _english_dict.get(key)
+	if v != null: return v
 	return key

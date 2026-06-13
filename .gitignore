@@ -1,26 +1,16 @@
-# Godot
+# Godot 4+ specific ignores
 .godot/
+/android/
+
+# Godot generated files (project-specific, not part of the addon)
 *.import
 *.uid
+project.godot
+icon.svg
+icon.svg.import
 
-# Cache
-shader_library_cache/
-
-# Python
-__pycache__/
-*.pyc
-
-# Test files
-scripts/test_*.py
-scripts/test_*.html
-scripts/debug_*.html
-scripts/final_*.html
-scripts/data/
-
-# OS
-.DS_Store
+# Editor/OS junk
+.editorconfig
+* copy
 Thumbs.db
-
-# IDE
-.vscode/
-.idea/
+.DS_Store

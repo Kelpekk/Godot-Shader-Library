@@ -5,6 +5,8 @@ extends Control
 
 const Translations = preload("res://addons/shader_library/api/translations.gd")
 const UpdateChecker = preload("res://addons/shader_library/api/update_checker.gd")
+const GIFDecoder   = preload("res://addons/shader_library/api/gif_decoder.gd")
+const GifPlayer    = preload("res://addons/shader_library/ui/gif_player.gd")
 
 # Helper function for translations
 func tr_key(key: String) -> String:
@@ -19,51 +21,51 @@ func _normalize_title(title: String) -> String:
 	t = t.replace(String.chr(0x2018), "'").replace(String.chr(0x2019), "'")
 	return t
 
+# Compiled regexes and entity tables — built once on first use. RegEx.compile()
+# is the slow part of decode; previously this happened on every call.
+static var _named_entities: Dictionary = {
+	"&nbsp;": " ", "&amp;": "&", "&lt;": "<", "&gt;": ">",
+	"&quot;": "\"", "&apos;": "'", "&ndash;": "-", "&mdash;": "-",
+	"&lsquo;": "'", "&rsquo;": "'", "&ldquo;": "\"", "&rdquo;": "\"",
+	"&hellip;": "...", "&copy;": "©", "&reg;": "®", "&trade;": "™",
+	"&euro;": "€", "&pound;": "£", "&yen;": "¥", "&cent;": "¢",
+	"&deg;": "°", "&plusmn;": "±", "&times;": "×", "&divide;": "÷",
+	"&frac12;": "½", "&frac14;": "¼", "&frac34;": "¾",
+}
+# Unicode → ASCII fallback table for fancy quotes / dashes / ellipsis / nbsp.
+static var _unicode_fallback: Dictionary = {
+	String.chr(0x201C): "\"", String.chr(0x201D): "\"",
+	String.chr(0x2018): "'",  String.chr(0x2019): "'",
+	String.chr(0x2013): "-",  String.chr(0x2014): "-",
+	String.chr(0x2026): "...", String.chr(0x00A0): " ",
+}
+static var _decimal_regex: RegEx
+static var _hex_regex: RegEx
+
+static func _get_decimal_regex() -> RegEx:
+	if _decimal_regex == null:
+		_decimal_regex = RegEx.new()
+		_decimal_regex.compile("&#(\\d+);")
+	return _decimal_regex
+
+static func _get_hex_regex() -> RegEx:
+	if _hex_regex == null:
+		_hex_regex = RegEx.new()
+		_hex_regex.compile("&#[xX]([0-9a-fA-F]+);")
+	return _hex_regex
+
 # Decode HTML entities to proper characters
 func _decode_html_entities(text: String) -> String:
 	if text.is_empty():
 		return ""
-	
+
 	var result = text
-	
-	# Named entities
-	var named_entities = {
-		"&nbsp;": " ",
-		"&amp;": "&",
-		"&lt;": "<",
-		"&gt;": ">",
-		"&quot;": "\"",
-		"&apos;": "'",
-		"&ndash;": "-",
-		"&mdash;": "-",
-		"&lsquo;": "'",
-		"&rsquo;": "'",
-		"&ldquo;": "\"",
-		"&rdquo;": "\"",
-		"&hellip;": "...",
-		"&copy;": "©",
-		"&reg;": "®",
-		"&trade;": "™",
-		"&euro;": "€",
-		"&pound;": "£",
-		"&yen;": "¥",
-		"&cent;": "¢",
-		"&deg;": "°",
-		"&plusmn;": "±",
-		"&times;": "×",
-		"&divide;": "÷",
-		"&frac12;": "½",
-		"&frac14;": "¼",
-		"&frac34;": "¾",
-	}
-	
-	for entity in named_entities:
-		result = result.replace(entity, named_entities[entity])
-	
+
+	for entity in _named_entities:
+		result = result.replace(entity, _named_entities[entity])
+
 	# Numeric entities (decimal): &#8220; &#8221; etc.
-	var decimal_regex = RegEx.new()
-	decimal_regex.compile("&#(\\d+);")
-	var decimal_matches = decimal_regex.search_all(result)
+	var decimal_matches = _get_decimal_regex().search_all(result)
 	# Process in reverse to avoid position shifts
 	for i in range(decimal_matches.size() - 1, -1, -1):
 		var match_result = decimal_matches[i]
@@ -71,11 +73,9 @@ func _decode_html_entities(text: String) -> String:
 		if code > 0 and code < 0x110000:  # Valid Unicode range
 			var char_str = String.chr(code)
 			result = result.substr(0, match_result.get_start()) + char_str + result.substr(match_result.get_end())
-	
+
 	# Hex entities: &#x201C; &#x201D; etc.
-	var hex_regex = RegEx.new()
-	hex_regex.compile("&#[xX]([0-9a-fA-F]+);")
-	var hex_matches = hex_regex.search_all(result)
+	var hex_matches = _get_hex_regex().search_all(result)
 	for i in range(hex_matches.size() - 1, -1, -1):
 		var match_result = hex_matches[i]
 		var hex_str = match_result.get_string(1)
@@ -83,23 +83,25 @@ func _decode_html_entities(text: String) -> String:
 		if code > 0 and code < 0x110000:
 			var char_str = String.chr(code)
 			result = result.substr(0, match_result.get_start()) + char_str + result.substr(match_result.get_end())
-	
-	# Normalize fancy quotes to ASCII
-	result = result.replace(String.chr(0x201C), "\"")  # Left double quote
-	result = result.replace(String.chr(0x201D), "\"")  # Right double quote
-	result = result.replace(String.chr(0x2018), "'")   # Left single quote
-	result = result.replace(String.chr(0x2019), "'")   # Right single quote
-	result = result.replace(String.chr(0x2013), "-")   # En dash
-	result = result.replace(String.chr(0x2014), "-")   # Em dash
-	result = result.replace(String.chr(0x2026), "...")  # Ellipsis
-	result = result.replace(String.chr(0x00A0), " ")   # Non-breaking space
-	
+
+	# Normalize fancy quotes / dashes / ellipsis / nbsp to ASCII.
+	for src in _unicode_fallback:
+		result = result.replace(src, _unicode_fallback[src])
+
 	return result
 
 # UI Elements
 var search_input: LineEdit
-var type_option: OptionButton
-var license_option: OptionButton
+const SHADER_TYPES: Array[String] = ["Canvas Item", "Spatial", "Particles", "Sky", "Fog"]
+const LICENSES: Array[String] = ["MIT", "CC0", "Shadertoy port", "GNU GPL v.3"]
+
+var type_menu: MenuButton
+# Lowercased category name → true. Empty = "all types".
+var active_type_filters: Dictionary = {}
+
+var license_menu: MenuButton
+# License name (verbatim) → true. Empty = "all licenses".
+var active_license_filters: Dictionary = {}
 var sort_option: OptionButton
 var shader_grid: HFlowContainer
 var status_label: Label
@@ -128,16 +130,63 @@ var current_tab: int = 0  # 0 = Browse, 1 = Installed
 var all_shaders: Array = []
 var filtered_shaders: Array = []
 var current_page: int = 1
-var shaders_per_page: int = 40
+var shaders_per_page: int = 36
 
-# Category colors for placeholders
+# Layout — page size adapts to grid width × editor DPI. See _recompute_layout.
+const CARD_BASE_WIDTH: int = 200
+const CARD_BASE_HEIGHT: int = 280
+const CARD_IMG_BASE_HEIGHT: int = 130
+const CARD_H_SEP: int = 12
+const ROWS_PER_PAGE: int = 6
+const MIN_CARDS_PER_PAGE: int = 12
+
+var _editor_scale: float = 1.0
+var _scaled_card_size: Vector2 = Vector2(CARD_BASE_WIDTH, CARD_BASE_HEIGHT)
+var _scaled_img_height: int = CARD_IMG_BASE_HEIGHT
+var _last_cards_per_row: int = -1
+var _layout_debounce: Timer
+
+# Category colors — matched to godotshaders.com badge colors.
 var category_colors: Dictionary = {
-	"spatial": Color(0.2, 0.4, 0.8),
-	"canvas item": Color(0.7, 0.3, 0.5),
-	"sky": Color(0.3, 0.6, 0.9),
-	"particles": Color(0.9, 0.5, 0.2),
-	"fog": Color(0.5, 0.5, 0.6)
+	"spatial": Color(1.0, 0.32, 0.32),      # red    #FF5252
+	"canvas item": Color(0.30, 0.69, 0.31), # green  #4CAF50
+	"sky": Color(0.13, 0.59, 0.95),         # blue   #2196F3
+	"particles": Color(1.0, 0.60, 0.0),     # orange #FF9800
+	"fog": Color(0.58, 0.64, 0.72)          # gray   #94A3B8
 }
+
+# Active GIF players in current card grid (freed on page change)
+var active_gif_players: Array = []
+
+# Card pool — persistent 1:1-with-page-size array of cards. Reused across every
+# filter change / page flip instead of queue_free + recreate, which was the main
+# cause of the page-flip stutter.
+var _card_pool: Array = []
+
+# In-memory texture cache (url → Texture2D), FIFO-evicted. Revisiting a page
+# becomes near-free: no disk read, no image decode, no GPU re-upload. GIF first
+# frames land here too (pre-composited onto black), so each GIF is decoded at
+# most once per editor session. Entries are downscaled to card resolution
+# (~85-350 KB each), so the cap stays well under ~50 MB of VRAM.
+const TEX_CACHE_MAX: int = 160
+const CARD_TEX_MAX_WIDTH: int = 480
+var _tex_cache: Dictionary = {}
+var _tex_cache_keys: Array = []
+
+# Pre-sorted views over all_shaders, built once after precompute completes.
+# _apply_filters iterates one of these instead of sorting its output.
+var _shaders_by_likes: Array = []
+var _shaders_by_title: Array = []
+
+# Incremental-search state. When the user only appends characters to the query
+# (and type/license/sort are unchanged), the new result set must be a subset of
+# the previous one — so we re-filter the ~tens of previous results instead of
+# rescanning all ~2100 shaders on every keystroke.
+var _last_query: String = ""
+var _last_filter_sig: String = ""
+# Installed-tab cards live alongside pool cards in shader_grid; tracked here so
+# we can free them when switching back to Browse without touching the pool.
+var _installed_cards: Array = []
 
 # Image loading - parallel (4 concurrent downloads)
 const PARALLEL_DOWNLOADS: int = 4
@@ -147,6 +196,13 @@ var current_image_cards: Array = []  # Array of Control
 var current_image_urls: Array = []  # Array of String
 var active_downloads: int = 0
 
+# Off-thread image decode. PNG/JPG/WebP decode + downscale are pure-CPU Image
+# work (no RenderingServer/scene access), so they run on WorkerThreadPool; only
+# the final ImageTexture upload stays on the main thread. Bounded so we never
+# flood the pool or land a burst of GPU uploads in one frame.
+const MAX_DECODE_TASKS: int = 4
+var _decode_tasks_active: int = 0
+
 # Shader preview dialog
 var preview_dialog: Window
 var preview_code_edit: CodeEdit
@@ -154,10 +210,67 @@ var preview_shader: Dictionary = {}
 var preview_http: HTTPRequest
 
 # Colors - matching Godot's dark theme
+const SETTING_THEME = "shader_library/appearance/theme"
+
+const BADGE_STYLE_BLOCK_TOP = "block_top"  # Classic: colored block above image
+const BADGE_STYLE_TEXT_BOTTOM = "text_bottom"  # godotshaders.com: colored text in info row
+
+# Theme palettes. Index matches the enum order in plugin.gd's THEME_NAMES.
+const THEMES: Array = [
+	{  # 0: Classic — colored block badge at the top of the card.
+		"bg_color": Color(0.15, 0.15, 0.15),
+		"card_bg": Color(0.2, 0.2, 0.22),
+		"accent": Color(0.3, 0.5, 0.9),
+		"text_dim": Color(0.6, 0.6, 0.65),
+		"badge_style": BADGE_STYLE_BLOCK_TOP,
+	},
+	{  # 1: godotshaders.com — colored bold text badge in the footer row.
+		"bg_color": Color(0.07, 0.07, 0.09),
+		"card_bg": Color(0.12, 0.12, 0.15),
+		"accent": Color(0.95, 0.38, 0.38),
+		"text_dim": Color(0.55, 0.58, 0.62),
+		"badge_style": BADGE_STYLE_TEXT_BOTTOM,
+	},
+]
+
+# Currently active badge style — set by _apply_theme(). Branched on in _create_card
+# and the two _get_badge_style helpers below.
+var _badge_style_mode: String = BADGE_STYLE_BLOCK_TOP
+
+# Theme index that was loaded when the UI was built. Compared against the live
+# ProjectSettings value to surface a restart-required warning when it drifts.
+var _theme_idx_at_build: int = 0
+var _theme_warning_label: Label
+
 var bg_color := Color(0.15, 0.15, 0.15)  # Godot editor background
 var card_bg := Color(0.2, 0.2, 0.22)
 var accent := Color(0.3, 0.5, 0.9)
 var text_dim := Color(0.6, 0.6, 0.65)
+
+# Shared stylebox cache — _create_card used to allocate 4 fresh StyleBoxFlats per
+# card (default + hover panel, category badge, video badge). At 40 cards/page
+# that's ~160 allocations per page-flip. These are immutable so a single shared
+# instance per logical style is fine; the category badges are cached by category
+# string in _badge_styles below.
+var _card_default_style: StyleBoxFlat
+var _card_hover_style: StyleBoxFlat
+var _video_badge_style: StyleBoxFlat
+var _badge_styles: Dictionary = {}  # category string → StyleBoxFlat (normal)
+var _badge_hover_styles: Dictionary = {}  # category string → StyleBoxFlat (hover, lightened)
+var _badge_font: SystemFont  # Bold system font shared by all category badges
+# Cached fully-built Theme resources for the category badges. Assigning a Theme
+# is ONE operation; setting 12+ individual overrides per Button was the hot spot
+# during page flips (40 cards × 12 overrides per badge = ~480 theme-update calls).
+var _badge_themes: Dictionary = {}  # category string → Theme
+# Pill-styled themes for the godotshaders.com look. Shared across all filter
+# buttons + every Preview/Install button on every card.
+var _pill_button_theme: Theme
+var _pill_lineedit_theme: Theme
+
+# Search debounce — without this, every keystroke runs _apply_filters across all
+# ~2100 shaders and rebuilds 40 cards. 200 ms after the last keystroke is enough
+# to feel snappy without choking the editor.
+var _search_debounce_timer: Timer
 
 ## Detect image format from binary data
 func _detect_image_format(data: PackedByteArray) -> String:
@@ -191,12 +304,15 @@ func _detect_image_format(data: PackedByteArray) -> String:
 		return "gif"
 	return "unknown"
 
-## Load image from buffer using correct decoder
+## Load image from buffer using correct decoder. Falls back to trying every
+## decoder when magic-byte detection is inconclusive — some godotshaders.com
+## previews have unusual headers (WebP wrapped oddly, JPEG with extra metadata)
+## that bypass the format check but decode fine.
 func _load_image_from_buffer(data: PackedByteArray) -> Image:
 	var img = Image.new()
 	var format = _detect_image_format(data)
 	var err = ERR_FILE_CORRUPT
-	
+
 	match format:
 		"png":
 			err = img.load_png_from_buffer(data)
@@ -204,21 +320,122 @@ func _load_image_from_buffer(data: PackedByteArray) -> Image:
 			err = img.load_jpg_from_buffer(data)
 		"webp":
 			err = img.load_webp_from_buffer(data)
-		_:
-			# Unknown format - skip silently
-			return null
-	
+
 	if err == OK:
 		return img
+
+	# Detection said "unknown" or the typed decoder failed — try the others.
+	if format != "png":
+		if img.load_png_from_buffer(data) == OK:
+			return img
+	if format != "jpg":
+		if img.load_jpg_from_buffer(data) == OK:
+			return img
+	if format != "webp":
+		if img.load_webp_from_buffer(data) == OK:
+			return img
 	return null
 
 func _init() -> void:
 	custom_minimum_size = Vector2(800, 600)
 
+# True once lazy_init() has run. plugin.gd calls lazy_init on the first
+# _make_visible(true), so the editor isn't blocked by JSON load, UI build, or
+# component setup for users who never open the ShaderLib tab.
+var _initialized: bool = false
+var _loading_placeholder: Label
+
 func _ready() -> void:
+	# Minimum work — defer the rest until the user actually opens the tab.
+	_build_loading_placeholder()
+
+func _build_loading_placeholder() -> void:
+	_loading_placeholder = Label.new()
+	_loading_placeholder.text = "Loading Shader Library…"
+	_loading_placeholder.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_loading_placeholder.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_loading_placeholder.set_anchors_preset(PRESET_FULL_RECT)
+	add_child(_loading_placeholder)
+
+func lazy_init() -> void:
+	if _initialized:
+		return
+	_initialized = true
+	if is_instance_valid(_loading_placeholder):
+		_loading_placeholder.queue_free()
+		_loading_placeholder = null
+	_init_editor_scale()
+	_apply_theme()
 	_build_ui()
 	_init_components()
+	if not ProjectSettings.settings_changed.is_connected(_on_project_settings_changed):
+		ProjectSettings.settings_changed.connect(_on_project_settings_changed)
 	call_deferred("_start_loading")
+
+func _init_editor_scale() -> void:
+	# EditorInterface.get_editor_scale() returns 1.0 / 1.25 / 1.5 / 2.0 etc.
+	# depending on the user's OS DPI setting and the editor's display/scale
+	# preference. Multiply pixel-sized constants by this so cards stay legible
+	# at 4K / hi-DPI without depending on the user re-laying out the grid.
+	if Engine.is_editor_hint() and ClassDB.class_exists("EditorInterface"):
+		_editor_scale = EditorInterface.get_editor_scale()
+	else:
+		_editor_scale = 1.0
+	_scaled_card_size = Vector2(
+		int(CARD_BASE_WIDTH * _editor_scale),
+		int(CARD_BASE_HEIGHT * _editor_scale)
+	)
+	_scaled_img_height = int(CARD_IMG_BASE_HEIGHT * _editor_scale)
+
+func _recompute_layout() -> void:
+	# Pick a page size that fills exactly N rows on the current grid width so
+	# the last row never has empty trailing slots. Skip if the grid hasn't been
+	# laid out yet (size = 0 during initial _ready).
+	if shader_grid == null or shader_grid.size.x <= 0:
+		return
+	var card_w: float = _scaled_card_size.x
+	var sep: float = CARD_H_SEP * _editor_scale
+	var available: float = shader_grid.size.x
+	var cards_per_row: int = maxi(1, int((available + sep) / (card_w + sep)))
+	if cards_per_row == _last_cards_per_row:
+		return
+	var old_size: int = shaders_per_page
+	var new_size: int = maxi(MIN_CARDS_PER_PAGE, cards_per_row * ROWS_PER_PAGE)
+	_last_cards_per_row = cards_per_row
+	if new_size == old_size:
+		return
+	# Keep roughly the same scroll position: shader-index-based mapping.
+	var first_idx: int = (current_page - 1) * old_size
+	shaders_per_page = new_size
+	current_page = maxi(1, (first_idx / new_size) + 1)
+	if not all_shaders.is_empty():
+		_display_page()
+
+func _on_grid_resized() -> void:
+	if is_instance_valid(_layout_debounce):
+		_layout_debounce.start()
+
+func _apply_theme() -> void:
+	var theme_idx: int = int(ProjectSettings.get_setting(SETTING_THEME, 0))
+	if theme_idx < 0 or theme_idx >= THEMES.size():
+		theme_idx = 0
+	var palette: Dictionary = THEMES[theme_idx]
+	bg_color = palette["bg_color"]
+	card_bg = palette["card_bg"]
+	accent = palette["accent"]
+	text_dim = palette["text_dim"]
+	_badge_style_mode = palette["badge_style"]
+	_theme_idx_at_build = theme_idx
+
+func _on_project_settings_changed() -> void:
+	# Fires for ANY project setting change. Check whether *our* theme drifted
+	# from the value that was active when the UI was built; if so, prompt the
+	# user to restart Godot. We don't auto-rebuild the UI because too many
+	# styles, caches, and child controls would have to be re-derived safely.
+	if _theme_warning_label == null:
+		return
+	var current_idx: int = int(ProjectSettings.get_setting(SETTING_THEME, 0))
+	_theme_warning_label.visible = current_idx != _theme_idx_at_build
 
 func _build_ui() -> void:
 	# Background
@@ -241,7 +458,15 @@ func _build_ui() -> void:
 	vbox.size_flags_vertical = SIZE_EXPAND_FILL
 	vbox.size_flags_horizontal = SIZE_EXPAND_FILL
 	margin.add_child(vbox)
-	
+
+	# Restart-required warning. Hidden until the theme setting changes at runtime.
+	_theme_warning_label = Label.new()
+	_theme_warning_label.text = "⚠ Theme changed — restart Godot to apply the new theme."
+	_theme_warning_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.2))
+	_theme_warning_label.add_theme_font_size_override("font_size", 13)
+	_theme_warning_label.visible = false
+	vbox.add_child(_theme_warning_label)
+
 	# Header
 	_build_header(vbox)
 	
@@ -274,11 +499,20 @@ func _build_ui() -> void:
 	vbox.add_child(scroll_container)
 	
 	shader_grid = HFlowContainer.new()
-	shader_grid.add_theme_constant_override("h_separation", 12)
-	shader_grid.add_theme_constant_override("v_separation", 12)
+	var grid_sep: int = int(CARD_H_SEP * _editor_scale)
+	shader_grid.add_theme_constant_override("h_separation", grid_sep)
+	shader_grid.add_theme_constant_override("v_separation", grid_sep)
 	shader_grid.size_flags_horizontal = SIZE_EXPAND_FILL
+	shader_grid.resized.connect(_on_grid_resized)
 	scroll_container.add_child(shader_grid)
-	
+
+	# Debounce grid resize so we don't re-render on every pixel of drag.
+	_layout_debounce = Timer.new()
+	_layout_debounce.one_shot = true
+	_layout_debounce.wait_time = 0.15
+	_layout_debounce.timeout.connect(_recompute_layout)
+	add_child(_layout_debounce)
+
 	# Pagination
 	_build_pagination(vbox)
 
@@ -319,8 +553,16 @@ func _build_header(parent: Control) -> void:
 	search_input = LineEdit.new()
 	search_input.placeholder_text = tr_key("search")
 	search_input.custom_minimum_size.x = 250
-	search_input.text_changed.connect(_on_filter_changed)
+	search_input.text_changed.connect(_on_search_text_changed)
+	_apply_pill_to_lineedit(search_input)
 	header.add_child(search_input)
+
+	# Debounce timer — child of search_input so it dies with the UI
+	_search_debounce_timer = Timer.new()
+	_search_debounce_timer.one_shot = true
+	_search_debounce_timer.wait_time = 0.2
+	_search_debounce_timer.timeout.connect(_apply_filters)
+	search_input.add_child(_search_debounce_timer)
 	
 	var refresh_btn = Button.new()
 	refresh_btn.text = tr_key("refresh")
@@ -346,15 +588,17 @@ func _build_filters(parent: Control) -> void:
 	type_lbl.add_theme_color_override("font_color", text_dim)
 	filters.add_child(type_lbl)
 	
-	type_option = OptionButton.new()
-	type_option.add_item(tr_key("all_types"))
-	type_option.add_item("Canvas Item")
-	type_option.add_item("Spatial")
-	type_option.add_item("Particles")
-	type_option.add_item("Sky")
-	type_option.add_item("Fog")
-	type_option.item_selected.connect(_on_filter_changed)
-	filters.add_child(type_option)
+	type_menu = MenuButton.new()
+	type_menu.text = tr_key("all_types")
+	type_menu.flat = false
+	var type_popup := type_menu.get_popup()
+	# Stay open so users can toggle multiple categories without re-opening.
+	type_popup.hide_on_checkable_item_selection = false
+	for i in SHADER_TYPES.size():
+		type_popup.add_check_item(SHADER_TYPES[i], i)
+	type_popup.id_pressed.connect(_on_type_menu_toggled)
+	_apply_pill_to_button(type_menu)
+	filters.add_child(type_menu)
 	
 	# License
 	var license_lbl = Label.new()
@@ -362,14 +606,16 @@ func _build_filters(parent: Control) -> void:
 	license_lbl.add_theme_color_override("font_color", text_dim)
 	filters.add_child(license_lbl)
 	
-	license_option = OptionButton.new()
-	license_option.add_item(tr_key("all_licenses"))
-	license_option.add_item("MIT")
-	license_option.add_item("CC0")
-	license_option.add_item("Shadertoy port")
-	license_option.add_item("GNU GPL v.3")
-	license_option.item_selected.connect(_on_filter_changed)
-	filters.add_child(license_option)
+	license_menu = MenuButton.new()
+	license_menu.text = tr_key("all_licenses")
+	license_menu.flat = false
+	var license_popup := license_menu.get_popup()
+	license_popup.hide_on_checkable_item_selection = false
+	for i in LICENSES.size():
+		license_popup.add_check_item(LICENSES[i], i)
+	license_popup.id_pressed.connect(_on_license_menu_toggled)
+	_apply_pill_to_button(license_menu)
+	filters.add_child(license_menu)
 	
 	var spacer = Control.new()
 	spacer.size_flags_horizontal = SIZE_EXPAND_FILL
@@ -387,6 +633,7 @@ func _build_filters(parent: Control) -> void:
 	sort_option.add_item(tr_key("most_liked"))
 	sort_option.add_item(tr_key("alphabetical"))
 	sort_option.item_selected.connect(_on_filter_changed)
+	_apply_pill_to_button(sort_option)
 	filters.add_child(sort_option)
 
 func _build_pagination(parent: Control) -> void:
@@ -479,24 +726,34 @@ func _init_components() -> void:
 	add_child(installed_manager)
 	installed_manager.shaders_scanned.connect(_on_installed_scanned)
 	
-	# Update checker
+	# Update checker — non-critical for startup. Defer instantiation so editor
+	# loading isn't blocked by it; the actual check then waits another 2s.
+	call_deferred("_init_update_checker")
+
+func _init_update_checker() -> void:
 	update_checker = UpdateChecker.new()
 	add_child(update_checker)
 	update_checker.update_available.connect(_on_update_available)
 	update_checker.update_check_completed.connect(_on_update_check_completed)
 	update_checker.update_error.connect(_on_update_error)
-	
-	# Check for updates on startup (delayed to not block UI)
 	get_tree().create_timer(2.0).timeout.connect(func(): update_checker.check_for_updates())
 	
 	# Connect to cache manager signals (for GitHub download)
 	cache_manager.database_loaded.connect(_on_shaders_loaded)
 	cache_manager.database_error.connect(_on_database_error)
-	
-	# Build preview dialog
-	_build_preview_dialog()
+	# Preview dialog is heavy (~250 nodes) but only needed once the user clicks
+	# Preview on a card. Build it lazily in _show_preview to keep editor startup
+	# snappy.
 
 func _start_loading() -> void:
+	# Cache is parsed on a worker thread; wait for it before deciding whether
+	# to use the cache or fetch from GitHub. Without this, the first call lands
+	# while is_cache_loaded == false and we'd always re-download.
+	if not cache_manager.is_cache_loaded:
+		cache_manager.cache_load_finished.connect(_start_loading, CONNECT_ONE_SHOT)
+		status_label.text = tr_key("loading_shaders")
+		return
+
 	# Check local cache first
 	if cache_manager.is_cache_valid():
 		var cached = cache_manager.get_cached_shaders()
@@ -504,7 +761,7 @@ func _start_loading() -> void:
 			status_label.text = tr_key("loaded_shaders") % cached.size()
 			_on_shaders_loaded(cached)
 			return
-	
+
 	# Download from GitHub (1 request instead of 52 pages!)
 	status_label.text = tr_key("loading_shaders")
 	progress_bar.visible = true
@@ -528,122 +785,437 @@ func _on_page_loaded(page: int, total: int) -> void:
 	progress_bar.value = page
 	status_label.text = tr_key("loading_page") % [page, total]
 
+const PRECOMPUTE_CHUNK_SIZE: int = 300
+
 func _on_shaders_loaded(shaders: Array) -> void:
 	all_shaders = shaders
-	progress_bar.visible = false
-	_apply_filters()
+	# Precompute fields the filter loop and card populate read on every call.
+	# Chunk across frames so 2k+ shaders don't freeze the editor for ~150ms on
+	# the first open.
+	_precompute_chunk(0)
+
+func _precompute_chunk(start: int) -> void:
+	var default_color := Color(0.3, 0.35, 0.4)
+	var end: int = mini(start + PRECOMPUTE_CHUNK_SIZE, all_shaders.size())
+	for i in range(start, end):
+		var s: Dictionary = all_shaders[i]
+		var raw_cat: String = s.get("category", "")
+		var image_url: String = s.get("image_url", "")
+		var lc_cat: String = raw_cat.to_lower().replace("_", " ")
+		var cat_color: Color = category_colors.get(lc_cat, default_color)
+		s["_lc_title"] = s.get("title", "").to_lower()
+		s["_lc_author"] = s.get("author", "").to_lower()
+		s["_lc_cat"] = lc_cat
+		s["_disp_cat"] = raw_cat.to_upper().replace("_", " ").substr(0, 12)
+		s["_emoji"] = _category_emoji(lc_cat.to_upper())
+		s["_likes_str"] = "♡ " + str(int(s.get("likes", 0)))
+		s["_has_video"] = (not s.get("video_url", "").is_empty()) \
+			or image_url.to_lower().ends_with(".gif")
+		# Sort keys — paying the int()/normalize cost once here means the sorted
+		# views below compare plain ints/strings instead of recomputing per
+		# comparison (~24k comparisons for 2100 entries).
+		s["_likes_int"] = int(s.get("likes", 0))
+		s["_sort_title"] = _normalize_title(s.get("title", ""))
+		# Precompute the colors that _populate_card would otherwise recompute on
+		# every page flip × 40 cards. Color.darkened/lightened allocate.
+		s["_cat_color"] = cat_color
+		s["_img_bg_color"] = cat_color.darkened(0.5)
+		s["_emoji_color"] = cat_color.lightened(0.3)
+		s["_badge_theme"] = _get_badge_theme(lc_cat, cat_color)
+	if end < all_shaders.size():
+		call_deferred("_precompute_chunk", end)
+	else:
+		_build_sorted_views()
+		progress_bar.visible = false
+		_apply_filters()
+
+func _build_sorted_views() -> void:
+	# Sorted copies of all_shaders, built once per data load. _apply_filters
+	# picks one as its iteration source, so changing filters never sorts again —
+	# filtering a pre-sorted array preserves its order.
+	_shaders_by_likes = all_shaders.duplicate()
+	_shaders_by_likes.sort_custom(func(a, b): return a.get("_likes_int", 0) > b.get("_likes_int", 0))
+	_shaders_by_title = all_shaders.duplicate()
+	_shaders_by_title.sort_custom(func(a, b): return a.get("_sort_title", "") < b.get("_sort_title", ""))
+
+func _filter_sig() -> String:
+	# Order-independent signature of the type+license selections and sort mode.
+	# Used to decide whether the previous result set is still a valid base for
+	# incremental query narrowing.
+	var t: Array = active_type_filters.keys()
+	t.sort()
+	var l: Array = active_license_filters.keys()
+	l.sort()
+	return "%s|%s|%d" % [",".join(t), ",".join(l), sort_option.selected]
 
 func _apply_filters(_arg = null) -> void:
-	filtered_shaders = all_shaders.duplicate()
-	
-	# Type filter
-	var type_idx = type_option.selected
-	if type_idx > 0:
-		var type_name = type_option.get_item_text(type_idx)
-		filtered_shaders = filtered_shaders.filter(func(s):
-			var category = s.get("category", "").to_lower().replace("_", " ")
-			return type_name.to_lower() in category
-		)
-	
-	# License filter
-	var license_idx = license_option.selected
-	if license_idx > 0:
-		var license_name = license_option.get_item_text(license_idx)
-		filtered_shaders = filtered_shaders.filter(func(s):
-			return s.get("license", "") == license_name
-		)
-	
-	# Search filter
-	var query = search_input.text.strip_edges().to_lower()
-	if not query.is_empty():
-		filtered_shaders = filtered_shaders.filter(func(s):
-			return query in s.get("title", "").to_lower() or query in s.get("author", "").to_lower()
-		)
-	
-	# Sort
-	match sort_option.selected:
-		2:  # Most liked - convert likes to int for proper sorting
-			filtered_shaders.sort_custom(func(a, b): return int(a.get("likes", "0")) > int(b.get("likes", "0")))
-		3:  # Alphabetical - strip non-alphanumeric from start for proper sorting
-			filtered_shaders.sort_custom(func(a, b): 
-				return _normalize_title(a.get("title", "")) < _normalize_title(b.get("title", ""))
-			)
-	
+	# Single pass applying every active filter. Two fast paths:
+	#  - incremental: if the query only grew and type/license/sort are unchanged,
+	#    the new results are a subset of the previous ones, so we scan those
+	#    (tens of entries) instead of all ~2100.
+	#  - pre-sorted source: otherwise we iterate the sorted view for the active
+	#    sort mode, so filtering preserves order and never re-sorts.
+	var query: String = search_input.text.strip_edges().to_lower()
+
+	var has_type: bool = not active_type_filters.is_empty()
+	var has_license: bool = not active_license_filters.is_empty()
+	var has_query: bool = not query.is_empty()
+
+	var cur_sig: String = _filter_sig()
+	var can_narrow: bool = has_query and not _last_query.is_empty() \
+		and query.begins_with(_last_query) and cur_sig == _last_filter_sig \
+		and not filtered_shaders.is_empty()
+
+	var src: Array
+	if can_narrow:
+		# Previous result already satisfies type+license and is already ordered;
+		# only the (now longer) query predicate can drop entries.
+		src = filtered_shaders
+		has_type = false
+		has_license = false
+	else:
+		# Iterate the pre-sorted view matching the active sort mode.
+		src = all_shaders
+		match sort_option.selected:
+			2:
+				if not _shaders_by_likes.is_empty():
+					src = _shaders_by_likes
+			3:
+				if not _shaders_by_title.is_empty():
+					src = _shaders_by_title
+
+	var out: Array = []
+	if has_type or has_license or has_query:
+		out.resize(src.size())  # upper bound, trimmed below
+		var n: int = 0
+		for s in src:
+			if has_type:
+				if not active_type_filters.has(s.get("_lc_cat", "")):
+					continue
+			if has_license:
+				if not active_license_filters.has(s.get("license", "")):
+					continue
+			if has_query:
+				if not (query in s.get("_lc_title", "") or query in s.get("_lc_author", "")):
+					continue
+			out[n] = s
+			n += 1
+		out.resize(n)
+	else:
+		out = src.duplicate()
+
+	filtered_shaders = out
+	_last_query = query
+	_last_filter_sig = cur_sig
+
+	# Sort comes free from the pre-sorted source views (and from narrowing, which
+	# preserves order). The only time we sort here is the brief window before
+	# _build_sorted_views has run (user changes sort while precompute is still
+	# in flight).
+	if not can_narrow:
+		match sort_option.selected:
+			2:
+				if _shaders_by_likes.is_empty():
+					filtered_shaders.sort_custom(func(a, b): return int(a.get("likes", 0)) > int(b.get("likes", 0)))
+			3:
+				if _shaders_by_title.is_empty():
+					filtered_shaders.sort_custom(func(a, b):
+						return _normalize_title(a.get("title", "")) < _normalize_title(b.get("title", ""))
+					)
+
 	current_page = 1
 	_display_page()
 
 func _on_filter_changed(_arg = null) -> void:
 	_apply_filters()
 
+func _on_badge_pressed(category: String) -> void:
+	# Toggle the matching category in the multi-select filter and re-apply.
+	# Categories in shader data come as "canvas_item"; menu items are
+	# "Canvas Item" — normalize both sides before comparing.
+	var target := category.to_lower().replace("_", " ")
+	for i in SHADER_TYPES.size():
+		if SHADER_TYPES[i].to_lower() == target:
+			_toggle_type_filter(i)
+			return
+
+func _on_type_menu_toggled(id: int) -> void:
+	_toggle_type_filter(id)
+
+func _toggle_type_filter(idx: int) -> void:
+	if idx < 0 or idx >= SHADER_TYPES.size():
+		return
+	var key := SHADER_TYPES[idx].to_lower()
+	var popup := type_menu.get_popup()
+	if active_type_filters.has(key):
+		active_type_filters.erase(key)
+		popup.set_item_checked(idx, false)
+	else:
+		active_type_filters[key] = true
+		popup.set_item_checked(idx, true)
+	_update_type_menu_text()
+	_apply_filters()
+
+func _update_type_menu_text() -> void:
+	if active_type_filters.is_empty():
+		type_menu.text = tr_key("all_types")
+	else:
+		type_menu.text = "%s (%d)" % [tr_key("all_types"), active_type_filters.size()]
+
+func _on_license_menu_toggled(id: int) -> void:
+	_toggle_license_filter(id)
+
+func _toggle_license_filter(idx: int) -> void:
+	if idx < 0 or idx >= LICENSES.size():
+		return
+	var key := LICENSES[idx]
+	var popup := license_menu.get_popup()
+	if active_license_filters.has(key):
+		active_license_filters.erase(key)
+		popup.set_item_checked(idx, false)
+	else:
+		active_license_filters[key] = true
+		popup.set_item_checked(idx, true)
+	_update_license_menu_text()
+	_apply_filters()
+
+func _update_license_menu_text() -> void:
+	if active_license_filters.is_empty():
+		license_menu.text = tr_key("all_licenses")
+	else:
+		license_menu.text = "%s (%d)" % [tr_key("all_licenses"), active_license_filters.size()]
+
+func _on_search_text_changed(_text: String) -> void:
+	# Restart the debounce timer on every keystroke; _apply_filters fires once
+	# the user pauses for 200 ms.
+	if is_instance_valid(_search_debounce_timer):
+		_search_debounce_timer.start()
+
+const CARD_UPDATE_CHUNK_SYNC: int = 8   # cards updated in the first frame (visible above the fold)
+const CARD_UPDATE_CHUNK_DEFER: int = 6  # cards updated in each subsequent deferred chunk
+
+# Bumped on every _display_page so deferred card-update chunks from a prior
+# filter change can detect they're stale and bail out.
+var _display_gen: int = 0
+
 func _display_page() -> void:
+	_display_gen += 1
+
 	# Cancel any pending image requests
 	for http in image_https:
 		if http and http.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
 			http.cancel_request()
 	active_downloads = 0
-	
-	# Clear grid
-	for child in shader_grid.get_children():
-		child.queue_free()
-	
+
+	# NOTE: do NOT stop()/blank GIF players here. Players are static (first
+	# frame only, no timer), so there's nothing running to stop — and blanking
+	# them turns every card whose shader survives the repopulate (the
+	# _populate_card early-out path) into a permanent black tile. Stale players
+	# are freed by _populate_card when a slot's shader changes, and
+	# _apply_gif_to_card/_apply_image_to_card clear leftovers defensively.
+
+	# Coming back from the Installed tab: drop those cards so they don't sit
+	# next to the pool in shader_grid.
+	if not _installed_cards.is_empty():
+		for c in _installed_cards:
+			if is_instance_valid(c):
+				c.queue_free()
+		_installed_cards.clear()
+
 	image_queue.clear()
-	
+
+	# Restore prev/next buttons in case the Installed tab hid them.
+	prev_button.visible = true
+	next_button.visible = true
+
 	var total_pages = maxi(1, ceili(float(filtered_shaders.size()) / shaders_per_page))
 	var start = (current_page - 1) * shaders_per_page
 	var end = mini(start + shaders_per_page, filtered_shaders.size())
-	
+	var visible_count: int = end - start
+
 	status_label.text = tr_key("found_shaders") % filtered_shaders.size()
 	page_label.text = "%d / %d" % [current_page, total_pages]
 	prev_button.disabled = current_page <= 1
 	next_button.disabled = current_page >= total_pages
-	
-	# Create cards and queue images
-	for i in range(start, end):
-		var shader = filtered_shaders[i]
-		var card = _create_card(shader)
-		shader_grid.add_child(card)
-		
-		# Queue image for loading if URL exists
-		var img_url = shader.get("image_url", "")
-		if img_url != "":
-			image_queue.append({"card": card, "url": img_url, "shader": shader})
-	
-	# Start loading images
+
+	# Drop stale pool entries that were queue_free'd elsewhere (defensive).
+	for i in range(_card_pool.size() - 1, -1, -1):
+		if not is_instance_valid(_card_pool[i]):
+			_card_pool.remove_at(i)
+
+	# Hide pool slots beyond what this page shows. Cheap; only triggers a redraw
+	# for slots that were visible.
+	for i in range(visible_count, _card_pool.size()):
+		if _card_pool[i].visible:
+			_card_pool[i].visible = false
+
+	# Process the first batch of cards inline so the visible-above-the-fold ones
+	# update immediately. The rest is deferred over multiple frames so the
+	# editor stays responsive on heavy filter / page-flip changes.
+	var first_n: int = mini(CARD_UPDATE_CHUNK_SYNC, visible_count)
+	_apply_card_slots(0, first_n, start)
+	if first_n < visible_count:
+		call_deferred("_update_card_chunk", first_n, start, _display_gen)
+
 	_load_next_image()
 
+func _apply_card_slots(slot_start: int, slot_end: int, page_start: int) -> void:
+	# Updates pool slot [slot_start, slot_end). Populates if a card already
+	# exists in that slot, otherwise creates one.
+	for i in range(slot_start, slot_end):
+		var shader: Dictionary = filtered_shaders[page_start + i]
+		var card: Control
+		if i < _card_pool.size():
+			card = _card_pool[i]
+			_populate_card(card, shader)
+		else:
+			card = _create_card(shader)
+			shader_grid.add_child(card)
+			_card_pool.append(card)
+		if not card.visible:
+			card.visible = true
+		var img_url: String = shader.get("image_url", "")
+		if not img_url.is_empty():
+			image_queue.append({"card": card, "url": img_url, "shader": shader})
+
+func _update_card_chunk(slot: int, page_start: int, gen: int) -> void:
+	if gen != _display_gen:
+		return  # A newer _display_page already started; drop this chunk.
+	var visible_count: int = mini(page_start + shaders_per_page, filtered_shaders.size()) - page_start
+	var chunk_end: int = mini(slot + CARD_UPDATE_CHUNK_DEFER, visible_count)
+	_apply_card_slots(slot, chunk_end, page_start)
+	if chunk_end < visible_count:
+		call_deferred("_update_card_chunk", chunk_end, page_start, gen)
+	_load_next_image()
+
+func _card_wants_url(card: Control, url: String) -> bool:
+	# An async decode may finish after the card was repopulated with a different
+	# shader. Only apply the result if the card's current shader still wants this
+	# exact image.
+	if not is_instance_valid(card) or not card.has_meta("shader"):
+		return false
+	var s: Dictionary = card.get_meta("shader")
+	return s.get("image_url", "") == url
+
+# Worker-thread decoders. They only touch a local PackedByteArray / Image (no
+# scene tree, no RenderingServer), so they're safe off the main thread.
+func _decode_path_to_card_image(path: String) -> Image:
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		return null
+	var bytes := f.get_buffer(f.get_length())
+	f.close()
+	var img := _load_image_from_buffer(bytes)
+	if img != null:
+		_downscale_for_card(img)
+	return img
+
+func _decode_bytes_to_card_image(bytes: PackedByteArray) -> Image:
+	var img := _load_image_from_buffer(bytes)
+	if img != null:
+		_downscale_for_card(img)
+	return img
+
+func _on_async_image_decoded(card_ref: WeakRef, url: String, img: Image) -> void:
+	# Runs on the main thread (call_deferred). Does the GPU upload, caches the
+	# texture, and applies it to the card if the card still wants it.
+	_decode_tasks_active = maxi(0, _decode_tasks_active - 1)
+	if img != null:
+		var tex := ImageTexture.create_from_image(img)
+		_tex_cache_put(url, tex)
+		var card = card_ref.get_ref()
+		if is_instance_valid(card) and _card_wants_url(card, url):
+			_apply_image_to_card(card, tex, url)
+	call_deferred("_load_next_image")
+
+func _tex_cache_put(url: String, tex: Texture2D) -> void:
+	if url.is_empty() or _tex_cache.has(url):
+		return
+	_tex_cache[url] = tex
+	_tex_cache_keys.append(url)
+	if _tex_cache_keys.size() > TEX_CACHE_MAX:
+		var evict: String = _tex_cache_keys.pop_front()
+		_tex_cache.erase(evict)
+
+## Downscale a decoded preview to card resolution before the GPU upload. Cards
+## render at ~200×130 (× editor scale); uploading and caching full-size
+## previews wastes both upload time and cache memory. The full-res original
+## stays on disk for anything that needs it.
+func _downscale_for_card(img: Image) -> void:
+	var w := img.get_width()
+	if w > CARD_TEX_MAX_WIDTH:
+		var h: int = maxi(1, int(img.get_height() * float(CARD_TEX_MAX_WIDTH) / w))
+		img.resize(CARD_TEX_MAX_WIDTH, h, Image.INTERPOLATE_BILINEAR)
+
 func _load_next_image() -> void:
-	# Fill all available download slots
-	while active_downloads < PARALLEL_DOWNLOADS and not image_queue.is_empty():
-		# Find free slot
+	# Drive the image queue. Memory-cache hits apply instantly; disk hits are
+	# decoded off the main thread (bounded by MAX_DECODE_TASKS); misses are
+	# downloaded (bounded by PARALLEL_DOWNLOADS). The loop yields whenever it
+	# would exceed either bound and is re-driven by the relevant completion.
+	while not image_queue.is_empty():
+		var item = image_queue[0]
+		var card = item.card
+		var url = item.url
+
+		if not is_instance_valid(card):
+			image_queue.pop_front()
+			continue
+
+		# Skip if this exact content is already on the card (e.g. resize
+		# repopulated the same shader into the same slot). Saves a redundant
+		# decode/GPU upload and avoids tearing down a player that's fine.
+		if card.get_meta("loaded_url", "") == url:
+			image_queue.pop_front()
+			continue
+
+		# In-memory texture hit — already on the GPU, applying is just a property
+		# assignment. Covers stills AND previously-decoded GIF first frames.
+		var mem_tex: Texture2D = _tex_cache.get(url)
+		if mem_tex != null:
+			image_queue.pop_front()
+			_apply_image_to_card(card, mem_tex, url)
+			continue
+
+		# Disk cache hit path.
+		if cache_manager.has_cached_image(url):
+			var cached_path = cache_manager.get_image_cache_path(url)  # index read, main thread
+			if cached_path.ends_with(".gif"):
+				image_queue.pop_front()
+				var gif_file = FileAccess.open(cached_path, FileAccess.READ)
+				if gif_file:
+					var gif_data = gif_file.get_buffer(gif_file.get_length())
+					gif_file.close()
+					_apply_gif_to_card(card, gif_data, url)
+				continue
+			# Still image — decode + downscale off-thread, bounded.
+			if _decode_tasks_active >= MAX_DECODE_TASKS:
+				return  # re-driven by _on_async_image_decoded
+			image_queue.pop_front()
+			_decode_tasks_active += 1
+			var card_ref := weakref(card)
+			var path: String = cached_path
+			WorkerThreadPool.add_task(func():
+				var decoded := _decode_path_to_card_image(path)
+				call_deferred("_on_async_image_decoded", card_ref, url, decoded)
+			)
+			continue
+
+		# Download path — needs a free HTTP slot.
+		if active_downloads >= PARALLEL_DOWNLOADS:
+			return  # Wait for an HTTP completion to call back into us.
 		var slot = -1
 		for i in PARALLEL_DOWNLOADS:
 			if image_https[i].get_http_client_status() == HTTPClient.STATUS_DISCONNECTED:
 				slot = i
 				break
-		
 		if slot == -1:
-			break  # No free slots
-		
-		var item = image_queue.pop_front()
-		var card = item.card
-		var url = item.url
-		
-		if not is_instance_valid(card):
-			continue  # Skip invalid cards
-		
-		# Check cache first
-		if cache_manager.has_cached_image(url):
-			var img = cache_manager.load_cached_image(url)
-			if img:
-				var tex = ImageTexture.create_from_image(img)
-				_apply_image_to_card(card, tex)
-				continue  # Don't count as active download, check next
-		
-		# Start download
+			return
+
+		image_queue.pop_front()
 		current_image_cards[slot] = card
 		current_image_urls[slot] = url
 		active_downloads += 1
-		
+
 		var err = image_https[slot].request(url)
 		if err != OK:
 			active_downloads -= 1
@@ -672,215 +1244,577 @@ func _on_image_loaded(result: int, code: int, _headers: PackedStringArray, body:
 		return
 	
 	var format = _detect_image_format(body)
-	if format == "unknown":
-		# Not a valid image format - skip silently
+	if format == "gif":
+		_apply_gif_to_card(card, body, url)
+		cache_manager.cache_image(url, body)
 		call_deferred("_load_next_image")
 		return
-	
-	var img = _load_image_from_buffer(body)
-	
-	if img:
-		var tex = ImageTexture.create_from_image(img)
-		_apply_image_to_card(card, tex)
-		
-		# Cache image
-		cache_manager.cache_image(url, body)
-	
+
+	# Persist the full-res bytes to disk on the main thread (updates the cache
+	# index), then decode + downscale off-thread; the GPU upload + apply happen
+	# in _on_async_image_decoded.
+	cache_manager.cache_image(url, body)
+	_decode_tasks_active += 1
+	var card_ref := weakref(card)
+	var body_copy := body.duplicate()
+	WorkerThreadPool.add_task(func():
+		var decoded := _decode_bytes_to_card_image(body_copy)
+		call_deferred("_on_async_image_decoded", card_ref, url, decoded)
+	)
+
 	call_deferred("_load_next_image")
 
-func _apply_image_to_card(card: Control, tex: Texture2D) -> void:
+func _apply_image_to_card(card: Control, tex: Texture2D, url: String = "") -> void:
 	if not is_instance_valid(card):
 		return
-	
-	# Find image container
-	var vbox = card.get_child(0)
-	if not vbox:
+	# Reuse the persistent TextureRect built once when the card was created.
+	if not card.has_meta("image_rect"):
 		return
-	
-	var img_container = vbox.get_node_or_null("ImageContainer")
-	if not img_container:
+	# Drop any stale GIF player so it can't render above the still image.
+	if card.has_meta("img_container"):
+		for ch in (card.get_meta("img_container") as MarginContainer).get_children():
+			if ch is GifPlayer:
+				ch.queue_free()
+	card.set_meta("loaded_url", url)
+	var image_rect: TextureRect = card.get_meta("image_rect")
+	image_rect.texture = tex
+	image_rect.visible = true
+	if card.has_meta("placeholder_center"):
+		(card.get_meta("placeholder_center") as CenterContainer).visible = false
+
+func _apply_gif_to_card(card: Control, data: PackedByteArray, url: String = "") -> void:
+	if not is_instance_valid(card): return
+	var img_container: MarginContainer = card.get_meta("img_container") if card.has_meta("img_container") else null
+	if img_container == null: return
+	# Never allow two players on one card: a stale (possibly textureless) player
+	# at a later child index renders ON TOP of the new one and shows as a black
+	# tile that no amount of redecoding fixes.
+	for ch in img_container.get_children():
+		if ch is GifPlayer:
+			ch.queue_free()
+	card.set_meta("loaded_url", url)
+	# GifPlayer is HIDDEN until the worker delivers decoded frames. If the
+	# previous shader on this slot was a regular image, image_rect keeps showing
+	# it during decode — _on_gif_card_ready hides image_rect AND reveals the
+	# player atomically once a frame is ready, so the user never sees a dark
+	# "in-between" frame.
+
+	var player = GifPlayer.new()
+	player.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	player.visible = false
+	# Remember which card owns this player so _on_gif_card_ready can find the
+	# card's placeholder without walking up the tree, and the url so the decoded
+	# first frame can be cached for future visits.
+	player.set_meta("card", card)
+	player.set_meta("url", url)
+	img_container.add_child(player)
+	img_container.move_child(player, 1)  # After ImgBg at index 0, under PlaceholderCenter
+	# Prune freed entries so the tracking array doesn't grow unbounded now that
+	# _display_page no longer clears it.
+	active_gif_players = active_gif_players.filter(func(p): return is_instance_valid(p))
+	active_gif_players.append(player)
+
+	# Create the decoder on the main thread (instantiating @tool GDScript on a
+	# worker thread can fail silently in the editor). Only the pure computation
+	# runs on the worker.
+	var player_ref = weakref(player)
+	var decoder = GIFDecoder.new()
+	var data_copy = data.duplicate()
+	WorkerThreadPool.add_task(func():
+		var frames = decoder.decode(data_copy)
+		call_deferred("_on_gif_card_ready", player_ref, frames)
+	)
+
+func _get_card_default_style() -> StyleBoxFlat:
+	if _card_default_style == null:
+		var s := StyleBoxFlat.new()
+		s.bg_color = card_bg
+		s.set_corner_radius_all(8)
+		s.set_border_width_all(2)
+		s.border_color = Color(0.25, 0.25, 0.3)
+		_card_default_style = s
+	return _card_default_style
+
+func _get_card_hover_style() -> StyleBoxFlat:
+	if _card_hover_style == null:
+		var s := StyleBoxFlat.new()
+		s.bg_color = Color(0.22, 0.22, 0.28)
+		s.set_corner_radius_all(8)
+		s.set_border_width_all(2)
+		s.border_color = accent
+		_card_hover_style = s
+	return _card_hover_style
+
+func _get_video_badge_style() -> StyleBoxFlat:
+	if _video_badge_style == null:
+		var s := StyleBoxFlat.new()
+		s.bg_color = Color(0.1, 0.1, 0.1, 0.75)
+		s.set_corner_radius(CORNER_TOP_LEFT, 4)
+		s.content_margin_left = 4
+		s.content_margin_right = 4
+		s.content_margin_top = 2
+		s.content_margin_bottom = 2
+		_video_badge_style = s
+	return _video_badge_style
+
+func _get_badge_font() -> SystemFont:
+	if _badge_font == null:
+		var f := SystemFont.new()
+		# godotshaders.com uses Inter; fall back to system sans-serif on machines
+		# that don't have it installed.
+		f.font_names = PackedStringArray(["Inter", "Segoe UI", "Helvetica Neue", "Arial", "sans-serif"])
+		f.font_weight = 700  # Bold
+		_badge_font = f
+	return _badge_font
+
+func _get_badge_style(category: String, cat_color: Color) -> StyleBoxFlat:
+	# Returns the badge background appropriate to the active theme.
+	# Classic theme: solid colored block (uses cat_color as bg).
+	# godotshaders.com theme: transparent — the category color goes on the text.
+	if _badge_styles.has(category):
+		return _badge_styles[category]
+	var s := StyleBoxFlat.new()
+	if _badge_style_mode == BADGE_STYLE_BLOCK_TOP:
+		s.bg_color = cat_color
+		s.set_corner_radius(CORNER_TOP_LEFT, 6)
+		s.set_corner_radius(CORNER_TOP_RIGHT, 6)
+		s.content_margin_left = 10
+		s.content_margin_right = 10
+		s.content_margin_top = 6
+		s.content_margin_bottom = 6
+	else:
+		s.bg_color = Color(0, 0, 0, 0)
+		s.set_corner_radius_all(4)
+		s.content_margin_left = 4
+		s.content_margin_right = 4
+		s.content_margin_top = 2
+		s.content_margin_bottom = 2
+	_badge_styles[category] = s
+	return s
+
+func _get_badge_hover_style(category: String, cat_color: Color) -> StyleBoxFlat:
+	if _badge_hover_styles.has(category):
+		return _badge_hover_styles[category]
+	var s := StyleBoxFlat.new()
+	if _badge_style_mode == BADGE_STYLE_BLOCK_TOP:
+		s.bg_color = cat_color.lightened(0.35)
+		s.set_corner_radius(CORNER_TOP_LEFT, 6)
+		s.set_corner_radius(CORNER_TOP_RIGHT, 6)
+		s.content_margin_left = 10
+		s.content_margin_right = 10
+		s.content_margin_top = 6
+		s.content_margin_bottom = 6
+		s.border_width_left = 1
+		s.border_width_right = 1
+		s.border_width_top = 1
+		s.border_width_bottom = 1
+		s.border_color = Color(1, 1, 1, 0.6)
+	else:
+		s.bg_color = Color(cat_color.r, cat_color.g, cat_color.b, 0.18)
+		s.set_corner_radius_all(4)
+		s.content_margin_left = 4
+		s.content_margin_right = 4
+		s.content_margin_top = 2
+		s.content_margin_bottom = 2
+	_badge_hover_styles[category] = s
+	return s
+
+func _make_pill_stylebox(bg: Color, border: Color, radius: int = 18) -> StyleBoxFlat:
+	var s := StyleBoxFlat.new()
+	s.bg_color = bg
+	s.set_corner_radius_all(radius)
+	s.border_width_left = 1
+	s.border_width_right = 1
+	s.border_width_top = 1
+	s.border_width_bottom = 1
+	s.border_color = border
+	s.content_margin_left = 14
+	s.content_margin_right = 14
+	s.content_margin_top = 6
+	s.content_margin_bottom = 6
+	return s
+
+func _get_pill_button_theme() -> Theme:
+	# Lazily build (once) and reuse for every pill-styled Button-derived control:
+	# filter MenuButtons, sort OptionButton, and Preview/Install on every card.
+	if _pill_button_theme == null:
+		var t := Theme.new()
+		var normal := _make_pill_stylebox(Color(1, 1, 1, 0.02), Color(1, 1, 1, 0.18))
+		var hover := _make_pill_stylebox(Color(1, 1, 1, 0.06), Color(1, 1, 1, 0.35))
+		var pressed := _make_pill_stylebox(Color(1, 1, 1, 0.10), Color(1, 1, 1, 0.5))
+		var focus := _make_pill_stylebox(Color(1, 1, 1, 0.02), accent)
+		t.set_stylebox("normal", "Button", normal)
+		t.set_stylebox("hover", "Button", hover)
+		t.set_stylebox("pressed", "Button", pressed)
+		t.set_stylebox("focus", "Button", focus)
+		t.set_stylebox("disabled", "Button", normal)
+		# MenuButton and OptionButton inherit Button styles, but apply explicitly
+		# anyway so popup arrows look consistent.
+		t.set_stylebox("normal", "MenuButton", normal)
+		t.set_stylebox("hover", "MenuButton", hover)
+		t.set_stylebox("pressed", "MenuButton", pressed)
+		t.set_stylebox("focus", "MenuButton", focus)
+		t.set_stylebox("normal", "OptionButton", normal)
+		t.set_stylebox("hover", "OptionButton", hover)
+		t.set_stylebox("pressed", "OptionButton", pressed)
+		t.set_stylebox("focus", "OptionButton", focus)
+		_pill_button_theme = t
+	return _pill_button_theme
+
+func _get_pill_lineedit_theme() -> Theme:
+	if _pill_lineedit_theme == null:
+		var t := Theme.new()
+		var normal := _make_pill_stylebox(Color(1, 1, 1, 0.02), Color(1, 1, 1, 0.18))
+		var focus := _make_pill_stylebox(Color(1, 1, 1, 0.04), Color(1, 1, 1, 0.45))
+		t.set_stylebox("normal", "LineEdit", normal)
+		t.set_stylebox("focus", "LineEdit", focus)
+		t.set_stylebox("read_only", "LineEdit", normal)
+		_pill_lineedit_theme = t
+	return _pill_lineedit_theme
+
+func _apply_pill_to_button(btn: Control) -> void:
+	# Only the godotshaders.com theme uses pills. Classic keeps the editor look.
+	if _badge_style_mode != BADGE_STYLE_TEXT_BOTTOM:
 		return
-	
-	# Remove placeholder
-	var center = img_container.get_node_or_null("PlaceholderCenter")
-	if center:
-		center.queue_free()
-	
-	# Add texture
-	var tex_rect = TextureRect.new()
-	tex_rect.texture = tex
-	tex_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	tex_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	tex_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
-	tex_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	img_container.add_child(tex_rect)
-	img_container.move_child(tex_rect, 0)
+	btn.theme = _get_pill_button_theme()
+
+func _apply_pill_to_lineedit(le: LineEdit) -> void:
+	if _badge_style_mode != BADGE_STYLE_TEXT_BOTTOM:
+		return
+	le.theme = _get_pill_lineedit_theme()
+
+func _get_badge_theme(cat: String, cat_color: Color) -> Theme:
+	# Build the badge theme once per category and reuse it for every card in
+	# that category. Saves ~12 theme overrides × 40 cards = ~480 theme-update
+	# calls per page flip, which was the biggest hot spot.
+	if _badge_themes.has(cat):
+		return _badge_themes[cat]
+	var t := Theme.new()
+	var font := _get_badge_font()
+	t.set_font("font", "Button", font)
+	t.set_constant("outline_size", "Button", 0)
+	var fsize: int = 12 if _badge_style_mode == BADGE_STYLE_BLOCK_TOP else 11
+	t.set_font_size("font_size", "Button", fsize)
+	if _badge_style_mode == BADGE_STYLE_BLOCK_TOP:
+		t.set_color("font_color", "Button", Color.WHITE)
+		t.set_color("font_hover_color", "Button", Color.WHITE)
+		t.set_color("font_pressed_color", "Button", Color.WHITE)
+		t.set_color("font_focus_color", "Button", Color.WHITE)
+	else:
+		t.set_color("font_color", "Button", cat_color)
+		t.set_color("font_hover_color", "Button", cat_color.lightened(0.25))
+		t.set_color("font_pressed_color", "Button", cat_color.lightened(0.4))
+		t.set_color("font_focus_color", "Button", cat_color)
+	var normal_style := _get_badge_style(cat, cat_color)
+	var hover_style := _get_badge_hover_style(cat, cat_color)
+	t.set_stylebox("normal", "Button", normal_style)
+	t.set_stylebox("hover", "Button", hover_style)
+	t.set_stylebox("pressed", "Button", hover_style)
+	t.set_stylebox("focus", "Button", normal_style)
+	t.set_stylebox("disabled", "Button", normal_style)
+	_badge_themes[cat] = t
+	return t
+
+func _create_category_badge(cat: String, cat_color: Color, raw_cat: String) -> Button:
+	# Hot path — runs once per card. Theme assignment is one operation; the old
+	# per-override approach cost ~12 theme-update calls per badge.
+	var badge = Button.new()
+	badge.text = raw_cat.to_upper().replace("_", " ").substr(0, 12)
+	badge.theme = _get_badge_theme(cat, cat_color)
+	badge.focus_mode = Control.FOCUS_NONE
+	badge.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	badge.pressed.connect(_on_badge_pressed.bind(raw_cat))
+	return badge
+
+func _category_emoji(cat_upper: String) -> String:
+	match cat_upper:
+		"SPATIAL": return "🎲"
+		"CANVAS ITEM": return "🎨"
+		"SKY": return "☁️"
+		"PARTICLES": return "✨"
+		"FOG": return "🌫️"
+		_: return "🔷"
 
 func _create_card(shader: Dictionary) -> Control:
+	# Builds the card skeleton with all child controls in place. Mutable parts
+	# (title text, badge, colors, etc.) are populated by _populate_card, which
+	# is also what runs on every subsequent filter change to reuse this card
+	# instead of allocating a fresh node tree.
 	var card = PanelContainer.new()
-	card.custom_minimum_size = Vector2(200, 280)
+	card.custom_minimum_size = _scaled_card_size
 	card.mouse_filter = Control.MOUSE_FILTER_STOP
-	
-	var style = StyleBoxFlat.new()
-	style.bg_color = card_bg
-	style.set_corner_radius_all(8)
-	style.set_border_width_all(2)
-	style.border_color = Color(0.25, 0.25, 0.3)
+
+	var style := _get_card_default_style()
 	card.add_theme_stylebox_override("panel", style)
-	
-	# Store reference for hover
 	card.set_meta("default_style", style)
-	card.set_meta("shader", shader)
-	
-	# Create hover style
-	var hover_style = style.duplicate()
-	hover_style.border_color = accent
-	hover_style.bg_color = Color(0.22, 0.22, 0.28)
-	card.set_meta("hover_style", hover_style)
-	
-	# Connect hover signals
+	card.set_meta("hover_style", _get_card_hover_style())
+
 	card.mouse_entered.connect(_on_card_hover.bind(card, true))
 	card.mouse_exited.connect(_on_card_hover.bind(card, false))
-	
+
 	var vbox = VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 0)
 	card.add_child(vbox)
-	
-	# Get category color
-	var cat = shader.get("category", "").to_lower()
-	var cat_color = category_colors.get(cat, Color(0.3, 0.35, 0.4))
-	
-	# Category badge - ON TOP of card (above image)
-	var badge = Label.new()
-	badge.text = " " + shader.get("category", "2D").to_upper().substr(0, 12) + " "
-	badge.add_theme_font_size_override("font_size", 9)
-	badge.add_theme_color_override("font_color", Color.WHITE)
-	var badge_style = StyleBoxFlat.new()
-	badge_style.bg_color = cat_color
-	badge_style.set_corner_radius(CORNER_TOP_LEFT, 6)
-	badge_style.set_corner_radius(CORNER_TOP_RIGHT, 6)
-	badge_style.set_corner_radius(CORNER_BOTTOM_LEFT, 0)
-	badge_style.set_corner_radius(CORNER_BOTTOM_RIGHT, 0)
-	badge_style.content_margin_left = 8
-	badge_style.content_margin_right = 8
-	badge_style.content_margin_top = 4
-	badge_style.content_margin_bottom = 4
-	badge.add_theme_stylebox_override("normal", badge_style)
-	vbox.add_child(badge)
-	
-	# Image container with category-based gradient
-	var img_container = PanelContainer.new()
-	img_container.custom_minimum_size = Vector2(0, 130)
+
+	# Classic theme: badge sits above the image. Built once here; only its text
+	# + theme update on _populate_card.
+	var top_badge: Button = null
+	if _badge_style_mode == BADGE_STYLE_BLOCK_TOP:
+		top_badge = _create_category_badge_pooled(card)
+		vbox.add_child(top_badge)
+
+	var img_container = MarginContainer.new()
+	img_container.custom_minimum_size = Vector2(0, _scaled_img_height)
 	img_container.name = "ImageContainer"
-	
-	var img_style = StyleBoxFlat.new()
-	img_style.bg_color = cat_color.darkened(0.5)
-	img_style.set_corner_radius_all(0)
-	img_container.add_theme_stylebox_override("panel", img_style)
+	img_container.clip_contents = true
+	img_container.add_theme_constant_override("margin_left", 0)
+	img_container.add_theme_constant_override("margin_right", 0)
+	img_container.add_theme_constant_override("margin_top", 0)
+	img_container.add_theme_constant_override("margin_bottom", 0)
 	vbox.add_child(img_container)
-	
-	# Placeholder icon centered
+
+	var img_bg = ColorRect.new()
+	img_bg.name = "ImgBg"
+	img_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	img_container.add_child(img_bg)
+
+	# Persistent TextureRect — reused across every shader on this card slot
+	# instead of allocating a new one on each image load. Hidden until an image
+	# is actually applied.
+	var image_rect := TextureRect.new()
+	image_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	image_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	image_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	image_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	image_rect.visible = false
+	img_container.add_child(image_rect)
+
 	var center = CenterContainer.new()
-	center.set_anchors_preset(PRESET_FULL_RECT)
 	center.name = "PlaceholderCenter"
 	img_container.add_child(center)
-	
+
 	var icon_vbox = VBoxContainer.new()
 	icon_vbox.alignment = BoxContainer.ALIGNMENT_CENTER
 	center.add_child(icon_vbox)
-	
-	# Category emoji
+
 	var icon = Label.new()
-	var cat_upper = shader.get("category", "").to_upper()
-	match cat_upper:
-		"SPATIAL": icon.text = "🎲"
-		"CANVAS ITEM": icon.text = "🎨"
-		"SKY": icon.text = "☁️"
-		"PARTICLES": icon.text = "✨"
-		"FOG": icon.text = "🌫️"
-		_: icon.text = "🔷"
 	icon.add_theme_font_size_override("font_size", 36)
-	icon.add_theme_color_override("font_color", cat_color.lightened(0.3))
 	icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	icon_vbox.add_child(icon)
-	
-	# Content margin
+
+	# Video badge overlay — always built, visibility toggles per shader.
+	var video_overlay = VBoxContainer.new()
+	video_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var bspacer = Control.new()
+	bspacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	bspacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	video_overlay.add_child(bspacer)
+	var badge_hbox = HBoxContainer.new()
+	badge_hbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge_hbox.add_theme_constant_override("separation", 0)
+	var bhspacer = Control.new()
+	bhspacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bhspacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge_hbox.add_child(bhspacer)
+	var video_badge = Label.new()
+	video_badge.text = " ▶ "
+	video_badge.add_theme_font_size_override("font_size", 9)
+	video_badge.add_theme_color_override("font_color", Color.WHITE)
+	video_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	video_badge.add_theme_stylebox_override("normal", _get_video_badge_style())
+	badge_hbox.add_child(video_badge)
+	video_overlay.add_child(badge_hbox)
+	img_container.add_child(video_overlay)
+
 	var content_margin = MarginContainer.new()
 	content_margin.add_theme_constant_override("margin_left", 10)
 	content_margin.add_theme_constant_override("margin_right", 10)
 	content_margin.add_theme_constant_override("margin_bottom", 8)
 	content_margin.size_flags_vertical = SIZE_EXPAND_FILL
 	vbox.add_child(content_margin)
-	
+
 	var content = VBoxContainer.new()
 	content.add_theme_constant_override("separation", 3)
 	content_margin.add_child(content)
-	
-	# Title
+
 	var title = Label.new()
-	title.text = shader.get("title", "Shader")
 	title.add_theme_font_size_override("font_size", 13)
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD
 	title.custom_minimum_size.y = 36
 	content.add_child(title)
-	
-	# Author
+
 	var author = Label.new()
-	author.text = shader.get("author", "Unknown")
 	author.add_theme_font_size_override("font_size", 11)
 	author.add_theme_color_override("font_color", text_dim)
 	content.add_child(author)
-	
-	# Spacer - ignore mouse to keep card hover active
+
 	var spacer = Control.new()
 	spacer.size_flags_vertical = SIZE_EXPAND_FILL
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	content.add_child(spacer)
-	
-	# License + Likes
+
 	var info_row = HBoxContainer.new()
+	info_row.add_theme_constant_override("separation", 8)
 	content.add_child(info_row)
-	
+
+	var bottom_badge: Button = null
+	if _badge_style_mode == BADGE_STYLE_TEXT_BOTTOM:
+		bottom_badge = _create_category_badge_pooled(card)
+		info_row.add_child(bottom_badge)
+
 	var lic = Label.new()
-	lic.text = shader.get("license", "CC0")
 	lic.add_theme_font_size_override("font_size", 10)
 	lic.add_theme_color_override("font_color", text_dim)
 	info_row.add_child(lic)
-	
+
 	var info_spacer = Control.new()
 	info_spacer.size_flags_horizontal = SIZE_EXPAND_FILL
 	info_spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	info_row.add_child(info_spacer)
-	
+
 	var likes = Label.new()
-	likes.text = "♡ " + str(shader.get("likes", 0))
 	likes.add_theme_font_size_override("font_size", 10)
 	likes.add_theme_color_override("font_color", text_dim)
 	info_row.add_child(likes)
-	
-	# Buttons
+
 	var btn_row = HBoxContainer.new()
 	btn_row.add_theme_constant_override("separation", 6)
 	content.add_child(btn_row)
-	
+
 	var preview_btn = Button.new()
 	preview_btn.text = tr_key("preview")
 	preview_btn.size_flags_horizontal = SIZE_EXPAND_FILL
-	preview_btn.pressed.connect(_show_preview.bind(shader))
+	preview_btn.pressed.connect(_on_card_preview_pressed.bind(card))
+	_apply_pill_to_button(preview_btn)
 	btn_row.add_child(preview_btn)
-	
+
 	var install_btn = Button.new()
-	# Check if we're in select mode (embedded in selector dialog)
+	install_btn.size_flags_horizontal = SIZE_EXPAND_FILL
 	if has_meta("select_mode") and get_meta("select_mode"):
 		install_btn.text = "Select"
-		install_btn.pressed.connect(_on_select_shader.bind(shader))
+		install_btn.pressed.connect(_on_card_select_pressed.bind(card))
 	else:
 		install_btn.text = tr_key("install")
-		install_btn.pressed.connect(_on_install.bind(shader))
-	install_btn.size_flags_horizontal = SIZE_EXPAND_FILL
+		install_btn.pressed.connect(_on_card_install_pressed.bind(card))
+	_apply_pill_to_button(install_btn)
 	btn_row.add_child(install_btn)
-	
+
+	# Store refs to mutable nodes so _populate_card can update them in O(1).
+	card.set_meta("img_bg", img_bg)
+	card.set_meta("image_rect", image_rect)
+	card.set_meta("placeholder_center", center)
+	card.set_meta("icon_label", icon)
+	card.set_meta("video_overlay", video_overlay)
+	card.set_meta("title_label", title)
+	card.set_meta("author_label", author)
+	card.set_meta("lic_label", lic)
+	card.set_meta("likes_label", likes)
+	if top_badge:
+		card.set_meta("badge_button", top_badge)
+	if bottom_badge:
+		card.set_meta("badge_button", bottom_badge)
+	card.set_meta("img_container", img_container)
+
+	_populate_card(card, shader)
 	return card
+
+func _create_category_badge_pooled(card: Control) -> Button:
+	# Same shape as _create_category_badge but uses a card-bound generic handler
+	# so the same button can serve any shader the card is later populated with.
+	var badge = Button.new()
+	badge.focus_mode = Control.FOCUS_NONE
+	badge.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	badge.pressed.connect(_on_card_badge_pressed.bind(card))
+	return badge
+
+func _populate_card(card: Control, shader: Dictionary) -> void:
+	# Hot path on every filter change / page flip. Strategy:
+	# - skip entirely if the same shader is already shown here
+	# - read precomputed colors and themes from the shader dict (no per-call
+	#   string ops or Color.darkened/lightened allocations)
+	# - skip individual setters when the value is already applied, to avoid the
+	#   theme-update propagation cost that comes with overrides and theme=
+	if card.has_meta("shader") and card.get_meta("shader") == shader:
+		return
+	card.set_meta("shader", shader)
+
+	var img_bg_color: Color = shader.get("_img_bg_color", Color(0.15, 0.18, 0.2))
+	var emoji_color: Color = shader.get("_emoji_color", Color(0.6, 0.6, 0.6))
+	var emoji: String = shader.get("_emoji", "🔷")
+
+	# Background tint — skip if unchanged (same category in same slot across
+	# pages is common after sort by likes/alpha).
+	var img_bg: ColorRect = card.get_meta("img_bg")
+	if img_bg.color != img_bg_color:
+		img_bg.color = img_bg_color
+
+	var icon_label: Label = card.get_meta("icon_label")
+	if icon_label.text != emoji:
+		icon_label.text = emoji
+	if (not icon_label.has_theme_color_override("font_color")) \
+			or icon_label.get_theme_color("font_color") != emoji_color:
+		icon_label.add_theme_color_override("font_color", emoji_color)
+
+	# Video indicator visibility.
+	var has_video: bool = shader.get("_has_video", false)
+	var video_overlay: VBoxContainer = card.get_meta("video_overlay")
+	if video_overlay.visible != has_video:
+		video_overlay.visible = has_video
+
+	# Free any leftover GifPlayer from the previous shader on this slot.
+	var img_container: MarginContainer = card.get_meta("img_container")
+	var freed_gif: bool = false
+	for ch in img_container.get_children():
+		if ch is GifPlayer:
+			ch.queue_free()
+			freed_gif = true
+	# Content on this card no longer matches the (new) shader.
+	card.set_meta("loaded_url", "")
+
+	# Image-area handling: keep the previous shader's still image visible until
+	# the new content swaps in (avoids a dark flash during the populate→apply
+	# window). Exceptions where we fall back to the emoji placeholder now:
+	# - no image_url → nothing will ever arrive
+	# - previous content was a GIF player (just freed) → image_rect is empty
+	var image_rect: TextureRect = card.get_meta("image_rect")
+	var placeholder: CenterContainer = card.get_meta("placeholder_center")
+	if shader.get("image_url", "").is_empty():
+		image_rect.texture = null
+		image_rect.visible = false
+		placeholder.visible = true
+	elif freed_gif or not image_rect.visible:
+		placeholder.visible = true
+
+	# Text labels — Godot already short-circuits Label.text setter when value
+	# matches, so we can call unconditionally.
+	(card.get_meta("title_label") as Label).text = shader.get("title", "Shader")
+	(card.get_meta("author_label") as Label).text = shader.get("author", "Unknown")
+	(card.get_meta("lic_label") as Label).text = shader.get("license", "CC0")
+	(card.get_meta("likes_label") as Label).text = shader.get("_likes_str", "♡ 0")
+
+	# Category badge — Theme assignment triggers NOTIFICATION_THEME_CHANGED on
+	# the button and a full style/font recompute. Skip when nothing changed.
+	if card.has_meta("badge_button"):
+		var b: Button = card.get_meta("badge_button")
+		var disp_cat: String = shader.get("_disp_cat", "")
+		if b.text != disp_cat:
+			b.text = disp_cat
+		var bt: Theme = shader.get("_badge_theme")
+		if bt != null and b.theme != bt:
+			b.theme = bt
+
+func _on_card_preview_pressed(card: Control) -> void:
+	_show_preview(card.get_meta("shader", {}))
+
+func _on_card_install_pressed(card: Control) -> void:
+	_on_install(card.get_meta("shader", {}))
+
+func _on_card_select_pressed(card: Control) -> void:
+	_on_select_shader(card.get_meta("shader", {}))
+
+func _on_card_badge_pressed(card: Control) -> void:
+	var shader: Dictionary = card.get_meta("shader", {})
+	_on_badge_pressed(shader.get("category", ""))
 
 func _on_prev() -> void:
 	if current_page > 1:
@@ -959,7 +1893,13 @@ func _build_preview_dialog() -> void:
 	preview_dialog.transient = true
 	preview_dialog.exclusive = true
 	preview_dialog.visible = false
-	preview_dialog.close_requested.connect(func(): preview_dialog.hide())
+	preview_dialog.close_requested.connect(func():
+		var ic = preview_dialog.find_child("ImageContainer", true, false)
+		if ic:
+			for ch in ic.get_children():
+				if ch is GifPlayer: ch.queue_free()
+		preview_dialog.hide()
+	)
 	add_child(preview_dialog)
 	
 	var panel = PanelContainer.new()
@@ -1178,7 +2118,21 @@ func _build_preview_dialog() -> void:
 	view_btn.text = tr_key("open_browser")
 	view_btn.pressed.connect(func(): OS.shell_open(preview_shader.get("url", "")))
 	btn_row.add_child(view_btn)
-	
+
+	var video_btn = Button.new()
+	video_btn.name = "VideoBtn"
+	video_btn.text = tr_key("watch_video")
+	video_btn.visible = false
+	video_btn.pressed.connect(func():
+		var vurl = preview_shader.get("video_url", "")
+		if vurl.is_empty():
+			var img = preview_shader.get("image_url", "")
+			if img.to_lower().ends_with(".gif"):
+				vurl = img
+		OS.shell_open(vurl)
+	)
+	btn_row.add_child(video_btn)
+
 	var copy_btn = Button.new()
 	copy_btn.text = tr_key("copy_code")
 	copy_btn.pressed.connect(func(): DisplayServer.clipboard_set(preview_code_edit.text))
@@ -1234,8 +2188,11 @@ func _create_shader_highlighter() -> CodeHighlighter:
 	return highlighter
 
 func _show_preview(shader: Dictionary) -> void:
+	# Lazy build on first use — keeps editor startup fast.
+	if preview_dialog == null:
+		_build_preview_dialog()
 	preview_shader = shader
-	
+
 	# Update title
 	var title_lbl = preview_dialog.find_child("TitleLabel", true, false)
 	if title_lbl:
@@ -1267,9 +2224,9 @@ func _show_preview(shader: Dictionary) -> void:
 	var img_loading = preview_dialog.find_child("ImageLoading", true, false)
 	
 	if img_container:
-		# Remove old TextureRect if exists
+		# Remove old media (TextureRect and GifPlayer) before showing new shader
 		for child in img_container.get_children():
-			if child is TextureRect:
+			if child is TextureRect or child is GifPlayer:
 				child.queue_free()
 		if img_loading:
 			img_loading.visible = true
@@ -1299,9 +2256,19 @@ func _show_preview(shader: Dictionary) -> void:
 	if install_btn:
 		install_btn.disabled = true
 	
+	# Show/hide Watch Video button (video_url or GIF image_url)
+	var video_btn = preview_dialog.find_child("VideoBtn", true, false)
+	if video_btn:
+		var video_url = shader.get("video_url", "")
+		if video_url.is_empty():
+			var img = shader.get("image_url", "")
+			if img.to_lower().ends_with(".gif"):
+				video_url = img
+		video_btn.visible = not video_url.is_empty()
+
 	# Show dialog
 	preview_dialog.popup_centered()
-	
+
 	# Load preview image
 	var img_url = shader.get("image_url", "")
 	if not img_url.is_empty():
@@ -1313,6 +2280,24 @@ func _show_preview(shader: Dictionary) -> void:
 		preview_http.request(url)
 
 func _load_preview_image(url: String) -> void:
+	if url.to_lower().ends_with(".gif"):
+		# Check GIF cache first
+		if cache_manager.has_cached_image(url):
+			var cached_path = cache_manager.get_image_cache_path(url)
+			var gif_file = FileAccess.open(cached_path, FileAccess.READ)
+			if gif_file:
+				var gif_data = gif_file.get_buffer(gif_file.get_length())
+				gif_file.close()
+				_apply_gif_to_preview(gif_data)
+				return
+		# Download and decode GIF
+		var img_http = HTTPRequest.new()
+		img_http.timeout = 20
+		add_child(img_http)
+		img_http.request_completed.connect(_on_preview_image_loaded.bind(img_http, url))
+		img_http.request(url)
+		return
+
 	# Check cache first
 	if cache_manager.has_cached_image(url):
 		var img = cache_manager.load_cached_image(url)
@@ -1337,15 +2322,22 @@ func _on_preview_image_loaded(result: int, code: int, _headers: PackedStringArra
 			img_loading.text = tr_key("image_load_failed")
 		return
 	
-	# Check if we actually received image data
-	if body.size() < 12 or _detect_image_format(body) == "unknown":
+	# Reject obviously non-image data; otherwise let _load_image_from_buffer try
+	# every decoder (handles unusual but valid headers).
+	if body.size() < 12:
 		var img_loading = preview_dialog.find_child("ImageLoading", true, false)
 		if img_loading:
 			img_loading.text = tr_key("image_error")
 		return
-	
+
+	var fmt = _detect_image_format(body)
+	if fmt == "gif":
+		cache_manager.cache_image(url, body)
+		_apply_gif_to_preview(body)
+		return
+
 	var img = _load_image_from_buffer(body)
-	
+
 	if img:
 		var tex = ImageTexture.create_from_image(img)
 		_apply_preview_image(tex)
@@ -1373,6 +2365,83 @@ func _apply_preview_image(tex: Texture2D) -> void:
 	tex_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	img_container.add_child(tex_rect)
 	img_container.move_child(tex_rect, 0)
+
+func _apply_gif_to_preview(data: PackedByteArray) -> void:
+	var img_container = preview_dialog.find_child("ImageContainer", true, false)
+	var img_loading   = preview_dialog.find_child("ImageLoading", true, false)
+	if not img_container: return
+
+	# Remove any previous GIF player in preview
+	for child in img_container.get_children():
+		if child is GifPlayer: child.queue_free()
+
+	var player = GifPlayer.new()
+	player.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	img_container.add_child(player)
+	img_container.move_child(player, 0)  # ImageCenter stays on top during decode
+
+	var player_ref = weakref(player)
+	var decoder = GIFDecoder.new()
+	var data_copy = data.duplicate()
+	WorkerThreadPool.add_task(func():
+		var frames = decoder.decode(data_copy)
+		call_deferred("_on_gif_preview_ready", player_ref, frames)
+	)
+
+
+func _on_gif_card_ready(player_ref: WeakRef, frames: Array) -> void:
+	var player = player_ref.get_ref()
+	if not is_instance_valid(player):
+		return
+	if frames.is_empty():
+		# Decode failed — drop the player and let whatever was previously on the
+		# card (image_rect with the prior shader's texture, or the placeholder)
+		# keep showing. We never free the placeholder here.
+		active_gif_players.erase(player)
+		player.queue_free()
+		return
+	# Decode succeeded — atomically: hide image_rect (which may still be showing
+	# the previous shader's poster), set up the first frame, then reveal the
+	# player. Doing it in this order means there is no frame where image_rect
+	# is hidden AND the player is hidden — no dark/black gap on the card.
+	if player.has_meta("card"):
+		var card: Control = player.get_meta("card")
+		if is_instance_valid(card):
+			if card.has_meta("image_rect"):
+				var ir: TextureRect = card.get_meta("image_rect")
+				ir.texture = null
+				ir.visible = false
+			if card.has_meta("placeholder_center"):
+				(card.get_meta("placeholder_center") as CenterContainer).visible = false
+	player.start_frames(frames)
+	player.visible = true
+
+	# Cache the first frame as a flat texture so future visits to this shader
+	# skip the worker decode entirely (the _tex_cache hit path applies it as a
+	# still image). Composite onto opaque black first — that's what the player
+	# renders behind transparent GIF pixels.
+	var gif_url: String = player.get_meta("url", "")
+	if not gif_url.is_empty() and not _tex_cache.has(gif_url):
+		var f: Image = frames[0].get("image")
+		if f != null:
+			var flat: Image = Image.create_empty(f.get_width(), f.get_height(), false, Image.FORMAT_RGBA8)
+			flat.fill(Color(0, 0, 0, 1))
+			flat.blend_rect(f, Rect2i(Vector2i.ZERO, Vector2i(f.get_width(), f.get_height())), Vector2i.ZERO)
+			_downscale_for_card(flat)
+			_tex_cache_put(gif_url, ImageTexture.create_from_image(flat))
+
+
+func _on_gif_preview_ready(player_ref: WeakRef, frames: Array) -> void:
+	var player = player_ref.get_ref()
+	if not is_instance_valid(player):
+		return
+	if frames.is_empty():
+		# Decode failed — drop the player so the loading label remains visible.
+		player.queue_free()
+		return
+	var img_loading = preview_dialog.find_child("ImageLoading", true, false)
+	if img_loading: img_loading.visible = false
+	player.start_frames(frames)
 
 func _on_preview_code_loaded(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
 	var loading_lbl = preview_dialog.find_child("LoadingLabel", true, false)
@@ -1995,27 +3064,36 @@ func _update_installed_count() -> void:
 		installed_btn.text = tr_key("installed") + " (%d)" % count
 
 func _display_installed_shaders(shaders: Array) -> void:
-	# Clear grid
-	for child in shader_grid.get_children():
-		child.queue_free()
-	
+	# Hide every pool card — they belong to the Browse tab and must NOT be freed
+	# (we reuse them on tab switch back).
+	for c in _card_pool:
+		if is_instance_valid(c):
+			c.visible = false
+
+	# Drop any installed cards from a previous scan.
+	for c in _installed_cards:
+		if is_instance_valid(c):
+			c.queue_free()
+	_installed_cards.clear()
+
 	image_queue.clear()
-	
+
 	if shaders.is_empty():
 		status_label.text = tr_key("no_installed")
 		page_label.text = ""
 		prev_button.visible = false
 		next_button.visible = false
 		return
-	
+
 	status_label.text = tr_key("installed_count") % shaders.size()
 	prev_button.visible = false
 	next_button.visible = false
 	page_label.text = ""
-	
+
 	for shader in shaders:
 		var card = _create_installed_card(shader)
 		shader_grid.add_child(card)
+		_installed_cards.append(card)
 
 func _create_installed_card(shader: Dictionary) -> Control:
 	var card = PanelContainer.new()
@@ -2038,7 +3116,7 @@ func _create_installed_card(shader: Dictionary) -> Control:
 	vbox.add_child(header)
 	
 	var badge = Label.new()
-	badge.text = " " + shader.get("category", "Unknown").to_upper() + " "
+	badge.text = " " + shader.get("category", "Unknown").to_upper().replace("_", " ") + " "
 	badge.add_theme_font_size_override("font_size", 9)
 	var badge_style = StyleBoxFlat.new()
 	badge_style.bg_color = Color(0.2, 0.5, 0.3)

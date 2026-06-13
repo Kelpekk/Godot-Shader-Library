@@ -8,6 +8,10 @@ const SETTING_SHADERS_PATH = "shader_library/general/shaders_folder"
 const SETTING_PREVIOUS_PATH = "shader_library/internal/previous_shaders_folder"
 const DEFAULT_SHADERS_PATH = "res://shaders/shaderlib/"
 
+const SETTING_THEME = "shader_library/appearance/theme"
+const THEME_NAMES = "Classic,godotshaders.com"
+const DEFAULT_THEME = 0  # Classic
+
 func _enter_tree() -> void:
 	# Register project settings
 	_register_project_settings()
@@ -64,6 +68,17 @@ func _register_project_settings() -> void:
 	# Previous path (internal tracking)
 	if not ProjectSettings.has_setting(SETTING_PREVIOUS_PATH):
 		ProjectSettings.set_setting(SETTING_PREVIOUS_PATH, DEFAULT_SHADERS_PATH)
+
+	# UI theme — shown as a dropdown in Project Settings ▸ Shader Library ▸ Appearance.
+	if not ProjectSettings.has_setting(SETTING_THEME):
+		ProjectSettings.set_setting(SETTING_THEME, DEFAULT_THEME)
+	ProjectSettings.set_initial_value(SETTING_THEME, DEFAULT_THEME)
+	ProjectSettings.add_property_info({
+		"name": SETTING_THEME,
+		"type": TYPE_INT,
+		"hint": PROPERTY_HINT_ENUM,
+		"hint_string": THEME_NAMES
+	})
 
 func _check_and_migrate_shaders() -> void:
 	var current_path = ProjectSettings.get_setting(SETTING_SHADERS_PATH, DEFAULT_SHADERS_PATH)
@@ -169,4 +184,12 @@ func _get_plugin_icon() -> Texture2D:
 
 func _make_visible(visible: bool) -> void:
 	if shader_browser:
+		# Defer init to the next idle frame. If we ran it inline here, an editor
+		# layout-restore that re-opens the ShaderLib tab on startup would block
+		# the loading dialog for ~1-2s of UI build + JSON parse + first-page
+		# render. Deferring lets the editor finish booting first, then the
+		# placeholder swaps to the real UI on the next frame.
+		# lazy_init itself short-circuits on subsequent calls.
+		if visible and not shader_browser._initialized and shader_browser.has_method("lazy_init"):
+			shader_browser.call_deferred("lazy_init")
 		shader_browser.visible = visible
