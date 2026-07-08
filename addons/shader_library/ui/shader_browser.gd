@@ -158,6 +158,32 @@ var category_colors: Dictionary = {
 # Active GIF players in current card grid (freed on page change)
 var active_gif_players: Array = []
 
+# Hover-to-animate state. GIF cards show a static first frame; hovering one
+# decodes all frames (off-thread, from the disk cache) and plays them. Only the
+# hovered card animates, so at most one GIF holds its full frame set at a time.
+# _hover_gen invalidates an in-flight decode when the pointer leaves / moves.
+var _hovered_card: Control = null
+var _hover_anim_timer: Timer
+var _hover_gen: int = 0
+const HOVER_ANIM_DELAY: float = 0.18  # debounce so fly-overs don't trigger decodes
+# LRU cache of fully-decoded GIF frame sets (url -> Array of {image, delay_ms}).
+# Decoding all frames in GDScript takes a few seconds for big GIFs, so we pay
+# that once per GIF per session; re-hovering a cached GIF plays instantly.
+const GIF_FRAMES_CACHE_MAX: int = 3
+var _gif_frames_cache: Dictionary = {}
+var _gif_frames_keys: Array = []
+# Animation frames are downscaled smaller than stills (cards display ~200px):
+# 280px keeps them crisp while bounding memory — a capped 60-frame GIF is
+# ~14 MB instead of ~80 MB.
+const ANIM_FRAME_MAX_WIDTH: int = 280
+# Progressive-stream state for the currently-decoding hovered GIF. Frames are
+# appended as the worker produces them; the player references this same array
+# so playback grows as frames arrive. _stream_gen ties a decode to one hover.
+var _stream_gen: int = -1
+var _stream_frames: Array = []
+var _stream_player: WeakRef = null
+var _stream_url: String = ""
+
 # Card pool — persistent 1:1-with-page-size array of cards. Reused across every
 # filter change / page flip instead of queue_free + recreate, which was the main
 # cause of the page-flip stutter.
@@ -472,7 +498,7 @@ func _build_ui() -> void:
 	
 	# Filters
 	_build_filters(vbox)
-	
+
 	# Status + Progress
 	var status_box = HBoxContainer.new()
 	vbox.add_child(status_box)
@@ -513,6 +539,13 @@ func _build_ui() -> void:
 	_layout_debounce.timeout.connect(_recompute_layout)
 	add_child(_layout_debounce)
 
+	# Debounce GIF hover so quick pointer fly-overs don't kick off full decodes.
+	_hover_anim_timer = Timer.new()
+	_hover_anim_timer.one_shot = true
+	_hover_anim_timer.wait_time = HOVER_ANIM_DELAY
+	_hover_anim_timer.timeout.connect(_on_hover_anim_timeout)
+	add_child(_hover_anim_timer)
+
 	# Pagination
 	_build_pagination(vbox)
 
@@ -525,7 +558,30 @@ func _build_header(parent: Control) -> void:
 	title.text = "Godot Shaders"
 	title.add_theme_font_size_override("font_size", 22)
 	header.add_child(title)
-	
+
+	# Small "!" info chip — hovering it explains how GIF previews load. Fixed
+	# square size + shrink-center so it stays a neat circle instead of
+	# stretching to the tall title's height.
+	var chip: float = 20.0 * _editor_scale
+	var gif_info = Label.new()
+	gif_info.text = "!"
+	gif_info.add_theme_font_size_override("font_size", int(13 * _editor_scale))
+	gif_info.add_theme_color_override("font_color", Color(1.0, 0.85, 0.2))
+	gif_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	gif_info.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	gif_info.custom_minimum_size = Vector2(chip, chip)
+	gif_info.size_flags_vertical = SIZE_SHRINK_CENTER
+	var info_sb := StyleBoxFlat.new()
+	info_sb.bg_color = Color(1.0, 0.85, 0.2, 0.14)
+	info_sb.border_color = Color(1.0, 0.85, 0.2, 0.5)
+	info_sb.set_border_width_all(1)
+	info_sb.set_corner_radius_all(int(chip / 2.0))
+	gif_info.add_theme_stylebox_override("normal", info_sb)
+	gif_info.mouse_filter = Control.MOUSE_FILTER_STOP
+	gif_info.mouse_default_cursor_shape = Control.CURSOR_HELP
+	gif_info.tooltip_text = tr_key("gif_hint")
+	header.add_child(gif_info)
+
 	# Tab buttons
 	var tab_box = HBoxContainer.new()
 	tab_box.add_theme_constant_override("separation", 4)
@@ -1137,15 +1193,17 @@ func _tex_cache_put(url: String, tex: Texture2D) -> void:
 		var evict: String = _tex_cache_keys.pop_front()
 		_tex_cache.erase(evict)
 
-## Downscale a decoded preview to card resolution before the GPU upload. Cards
-## render at ~200×130 (× editor scale); uploading and caching full-size
-## previews wastes both upload time and cache memory. The full-res original
-## stays on disk for anything that needs it.
-func _downscale_for_card(img: Image) -> void:
+## Downscale an image to at most max_w wide (keeps aspect). Cards render small,
+## so shrinking before the GPU upload saves upload time and cache memory.
+func _downscale_image(img: Image, max_w: int) -> void:
 	var w := img.get_width()
-	if w > CARD_TEX_MAX_WIDTH:
-		var h: int = maxi(1, int(img.get_height() * float(CARD_TEX_MAX_WIDTH) / w))
-		img.resize(CARD_TEX_MAX_WIDTH, h, Image.INTERPOLATE_BILINEAR)
+	if w > max_w:
+		var h: int = maxi(1, int(img.get_height() * float(max_w) / w))
+		img.resize(max_w, h, Image.INTERPOLATE_BILINEAR)
+
+## Still previews: 480px is crisp on hi-DPI. The full-res original stays on disk.
+func _downscale_for_card(img: Image) -> void:
+	_downscale_image(img, CARD_TEX_MAX_WIDTH)
 
 func _load_next_image() -> void:
 	# Drive the image queue. Memory-cache hits apply instantly; disk hits are
@@ -1168,13 +1226,16 @@ func _load_next_image() -> void:
 			image_queue.pop_front()
 			continue
 
-		# In-memory texture hit — already on the GPU, applying is just a property
-		# assignment. Covers stills AND previously-decoded GIF first frames.
-		var mem_tex: Texture2D = _tex_cache.get(url)
-		if mem_tex != null:
-			image_queue.pop_front()
-			_apply_image_to_card(card, mem_tex, url)
-			continue
+		# In-memory texture hit — STILL IMAGES ONLY. GIFs must always go through
+		# _apply_gif_to_card so a GifPlayer exists for hover-to-animate; caching
+		# their first frame as a still texture here would strip that ability.
+		var is_gif: bool = url.to_lower().ends_with(".gif")
+		if not is_gif:
+			var mem_tex: Texture2D = _tex_cache.get(url)
+			if mem_tex != null:
+				image_queue.pop_front()
+				_apply_image_to_card(card, mem_tex, url)
+				continue
 
 		# Disk cache hit path.
 		if cache_manager.has_cached_image(url):
@@ -1307,6 +1368,9 @@ func _apply_gif_to_card(card: Control, data: PackedByteArray, url: String = "") 
 	# first frame can be cached for future visits.
 	player.set_meta("card", card)
 	player.set_meta("url", url)
+	# Expose the player + url on the card so hover-to-animate can find them.
+	card.set_meta("gif_player", player)
+	card.set_meta("gif_url", url)
 	img_container.add_child(player)
 	img_container.move_child(player, 1)  # After ImgBg at index 0, under PlaceholderCenter
 	# Prune freed entries so the tracking array doesn't grow unbounded now that
@@ -1626,6 +1690,38 @@ func _create_card(shader: Dictionary) -> Control:
 	video_overlay.add_child(badge_hbox)
 	img_container.add_child(video_overlay)
 
+	# Loading bar — a thin indeterminate strip pinned to the top of the image
+	# area, shown while a hovered GIF decodes. img_container is a MarginContainer
+	# (forces children to fill), so we use a filling VBox with the thin track as
+	# its top row and an expanding spacer below — same trick as video_overlay.
+	# Added last so it draws on top.
+	var bar_h: float = maxf(3.0, 3.0 * _editor_scale)
+	var load_overlay = VBoxContainer.new()
+	load_overlay.name = "LoadOverlay"
+	load_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	load_overlay.add_theme_constant_override("separation", 0)
+	load_overlay.visible = false
+	var load_bar_track = ColorRect.new()
+	load_bar_track.color = Color(0, 0, 0, 0.35)
+	load_bar_track.clip_contents = true
+	load_bar_track.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	load_bar_track.custom_minimum_size = Vector2(0, bar_h)
+	load_bar_track.size_flags_horizontal = SIZE_EXPAND_FILL
+	load_overlay.add_child(load_bar_track)
+	var load_bar_spacer = Control.new()
+	load_bar_spacer.size_flags_vertical = SIZE_EXPAND_FILL
+	load_bar_spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	load_overlay.add_child(load_bar_spacer)
+	var load_bar_fill = ColorRect.new()
+	load_bar_fill.color = accent
+	load_bar_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	load_bar_fill.size = Vector2(0, bar_h)
+	load_bar_track.add_child(load_bar_fill)
+	img_container.add_child(load_overlay)
+	card.set_meta("load_overlay", load_overlay)
+	card.set_meta("load_bar_track", load_bar_track)
+	card.set_meta("load_bar_fill", load_bar_fill)
+
 	var content_margin = MarginContainer.new()
 	content_margin.add_theme_constant_override("margin_left", 10)
 	content_margin.add_theme_constant_override("margin_right", 10)
@@ -1770,6 +1866,18 @@ func _populate_card(card: Control, shader: Dictionary) -> void:
 			freed_gif = true
 	# Content on this card no longer matches the (new) shader.
 	card.set_meta("loaded_url", "")
+	# Drop the hover-to-animate references — the player above is being freed.
+	# (Use remove_meta; get_meta with a null default raises an error on a missing
+	# key, so we rely on has_meta guards everywhere gif_player is read.)
+	if card.has_meta("gif_player"):
+		card.remove_meta("gif_player")
+	if card.has_meta("gif_url"):
+		card.remove_meta("gif_url")
+	# Cancel any loading bar/tween left over from the previous shader.
+	_set_card_loading(card, false)
+	if _hovered_card == card:
+		_hovered_card = null
+		_hover_gen += 1
 
 	# Image-area handling: keep the previous shader's still image visible until
 	# the new content swaps in (avoids a dark flash during the populate→apply
@@ -2415,20 +2523,9 @@ func _on_gif_card_ready(player_ref: WeakRef, frames: Array) -> void:
 				(card.get_meta("placeholder_center") as CenterContainer).visible = false
 	player.start_frames(frames)
 	player.visible = true
-
-	# Cache the first frame as a flat texture so future visits to this shader
-	# skip the worker decode entirely (the _tex_cache hit path applies it as a
-	# still image). Composite onto opaque black first — that's what the player
-	# renders behind transparent GIF pixels.
-	var gif_url: String = player.get_meta("url", "")
-	if not gif_url.is_empty() and not _tex_cache.has(gif_url):
-		var f: Image = frames[0].get("image")
-		if f != null:
-			var flat: Image = Image.create_empty(f.get_width(), f.get_height(), false, Image.FORMAT_RGBA8)
-			flat.fill(Color(0, 0, 0, 1))
-			flat.blend_rect(f, Rect2i(Vector2i.ZERO, Vector2i(f.get_width(), f.get_height())), Vector2i.ZERO)
-			_downscale_for_card(flat)
-			_tex_cache_put(gif_url, ImageTexture.create_from_image(flat))
+	# NOTE: we deliberately do NOT cache the GIF's first frame in _tex_cache.
+	# GIFs always route through this GifPlayer path (see _load_next_image) so
+	# hover-to-animate has a player to drive; a cached still would bypass that.
 
 
 func _on_gif_preview_ready(player_ref: WeakRef, frames: Array) -> void:
@@ -3020,10 +3117,137 @@ func _on_card_hover(card: Control, is_hover: bool) -> void:
 		var hover_style = card.get_meta("hover_style")
 		if hover_style:
 			card.add_theme_stylebox_override("panel", hover_style)
+		# If this card holds a GIF, arm the debounce to start playback.
+		if card.has_meta("gif_player"):
+			var gp = card.get_meta("gif_player")
+			if is_instance_valid(gp):
+				_hovered_card = card
+				_hover_gen += 1  # invalidate any decode from a previous hover
+				_hover_anim_timer.start()
 	else:
 		var default_style = card.get_meta("default_style")
 		if default_style:
 			card.add_theme_stylebox_override("panel", default_style)
+		if _hovered_card == card:
+			_hovered_card = null
+			_hover_gen += 1
+		# Cancel the loading bar if a decode was in progress for this card.
+		_set_card_loading(card, false)
+		# Stop playback and drop the extra frames.
+		if card.has_meta("gif_player"):
+			var gp_exit = card.get_meta("gif_player")
+			if is_instance_valid(gp_exit) and gp_exit.is_animating():
+				gp_exit.stop_animation()
+
+func _on_hover_anim_timeout() -> void:
+	# Debounce elapsed — the pointer settled on a GIF card.
+	var card = _hovered_card
+	if not is_instance_valid(card) or not card.has_meta("gif_player"):
+		return
+	var player = card.get_meta("gif_player")
+	var url: String = card.get_meta("gif_url", "")
+	if not is_instance_valid(player) or url.is_empty():
+		return
+	if player.is_animating():
+		return
+	# Instant path — this GIF was already decoded earlier this session.
+	if _gif_frames_cache.has(url):
+		var cached_frames: Array = _gif_frames_cache[url]
+		if cached_frames.size() > 1:
+			player.play_animation(cached_frames)
+		return
+	var path: String = cache_manager.get_image_cache_path(url)
+	if not path.ends_with(".gif") or not FileAccess.file_exists(path):
+		return
+	# Cache miss — a real decode is coming; show the loading bar and stream.
+	_set_card_loading(card, true)
+	var gen: int = _hover_gen
+	_stream_gen = gen
+	_stream_frames = []
+	_stream_player = weakref(player)
+	_stream_url = url
+	# Instantiate the decoder on the MAIN thread — creating an @tool GDScript
+	# instance on a worker thread fails silently in the editor (same reason
+	# _apply_gif_to_card pre-creates its decoder). Only the pure decode runs
+	# on the worker; each frame is handed back to the main thread as it's
+	# produced so playback can start after just a couple of frames.
+	var decoder := GIFDecoder.new()
+	WorkerThreadPool.add_task(func():
+		var f := FileAccess.open(path, FileAccess.READ)
+		if f == null:
+			call_deferred("_on_stream_done", gen)
+			return
+		var bytes := f.get_buffer(f.get_length())
+		f.close()
+		decoder.decode_streaming(bytes, GIFDecoder.MAX_ANIM_FRAMES, func(frame):
+			_downscale_image(frame["image"], ANIM_FRAME_MAX_WIDTH)
+			call_deferred("_on_stream_frame", gen, frame)
+		)
+		call_deferred("_on_stream_done", gen)
+	)
+
+func _on_stream_frame(gen: int, frame: Dictionary) -> void:
+	# A decoded frame arrived from the worker. Ignore if the hover moved on.
+	if gen != _stream_gen or gen != _hover_gen:
+		return
+	_stream_frames.append(frame)
+	var player = _stream_player.get_ref()
+	if not is_instance_valid(player):
+		return
+	# Start animating as soon as we have two frames. play_animation is handed the
+	# SAME array we keep appending to, so the loop naturally extends as more
+	# frames arrive (progressive playback).
+	if _stream_frames.size() == 2:
+		player.play_animation(_stream_frames)
+		if player.has_meta("card"):
+			_set_card_loading(player.get_meta("card"), false)
+
+func _on_stream_done(gen: int) -> void:
+	if gen != _stream_gen:
+		return  # a newer hover superseded this decode
+	# Cache the full set so re-hovering is instant this session.
+	if _stream_frames.size() > 1:
+		_gif_frames_cache_put(_stream_url, _stream_frames)
+	var player = _stream_player.get_ref()
+	if is_instance_valid(player) and player.has_meta("card"):
+		_set_card_loading(player.get_meta("card"), false)
+
+func _gif_frames_cache_put(url: String, frames: Array) -> void:
+	if url.is_empty() or _gif_frames_cache.has(url):
+		return
+	_gif_frames_cache[url] = frames
+	_gif_frames_keys.append(url)
+	if _gif_frames_keys.size() > GIF_FRAMES_CACHE_MAX:
+		var evict: String = _gif_frames_keys.pop_front()
+		_gif_frames_cache.erase(evict)
+
+func _set_card_loading(card: Control, on: bool) -> void:
+	# Show/hide the top-of-card indeterminate loading bar while a GIF decodes.
+	if not is_instance_valid(card) or not card.has_meta("load_overlay"):
+		return
+	var overlay = card.get_meta("load_overlay")
+	var track = card.get_meta("load_bar_track")
+	var fill = card.get_meta("load_bar_fill")
+	if not is_instance_valid(overlay) or not is_instance_valid(track) or not is_instance_valid(fill):
+		return
+	# Kill any running sweep tween.
+	if card.has_meta("load_tween"):
+		var old = card.get_meta("load_tween")
+		if old is Tween and old.is_valid():
+			old.kill()
+		card.remove_meta("load_tween")
+	overlay.visible = on
+	if not on:
+		return
+	# Start an indeterminate left-to-right sweep that loops until hidden.
+	var w: float = track.size.x
+	if w <= 0.0:
+		w = _scaled_card_size.x
+	var fw: float = maxf(24.0, w * 0.35)
+	fill.size.x = fw
+	var tw := create_tween().set_loops()
+	tw.tween_property(fill, "position:x", w, 0.7).from(-fw)
+	card.set_meta("load_tween", tw)
 
 # === TAB HANDLING ===
 

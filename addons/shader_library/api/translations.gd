@@ -58,6 +58,7 @@ static var TRANSLATIONS: Dictionary = {
 		"delete_error": "Error deleting shader",
 		"hint_browser": "💡 Open in browser to see videos, live preview and additional materials",
 		"watch_video": "Watch Video",
+		"gif_hint": "Hover a card to play its GIF preview. It loads gradually as it decodes.",
 		"connecting": "Connecting to website...",
 		"credits": "Shaders powered by",
 	},
@@ -105,6 +106,7 @@ static var TRANSLATIONS: Dictionary = {
 		"delete_error": "Błąd usuwania shadera",
 		"hint_browser": "💡 Otwórz w przeglądarce aby zobaczyć filmy, live preview i dodatkowe materiały",
 		"watch_video": "Oglądaj wideo",
+		"gif_hint": "Najedź na kartę, aby odtworzyć podgląd GIF. Ładuje się stopniowo podczas dekodowania.",
 		"connecting": "Łączenie ze stroną...",
 		"credits": "Shadery dzięki",
 	},
@@ -152,6 +154,7 @@ static var TRANSLATIONS: Dictionary = {
 		"delete_error": "Fehler beim Löschen",
 		"hint_browser": "💡 Im Browser öffnen für Videos, Live-Vorschau und mehr",
 		"watch_video": "Video ansehen",
+		"gif_hint": "Fahre über eine Karte, um die GIF-Vorschau abzuspielen. Sie lädt beim Dekodieren nach und nach.",
 		"connecting": "Verbinde mit Website...",
 	},
 	"es": {
@@ -198,6 +201,7 @@ static var TRANSLATIONS: Dictionary = {
 		"delete_error": "Error al eliminar shader",
 		"hint_browser": "💡 Abre en el navegador para ver videos, vista previa en vivo y más",
 		"watch_video": "Ver video",
+		"gif_hint": "Pasa el cursor sobre una tarjeta para reproducir su GIF. Se carga gradualmente mientras se decodifica.",
 		"connecting": "Conectando al sitio web...",
 	},
 	"fr": {
@@ -244,6 +248,7 @@ static var TRANSLATIONS: Dictionary = {
 		"delete_error": "Erreur lors de la suppression",
 		"hint_browser": "💡 Ouvrez dans le navigateur pour les vidéos et l'aperçu en direct",
 		"watch_video": "Regarder la vidéo",
+		"gif_hint": "Survolez une carte pour lire l'aperçu GIF. Il se charge progressivement pendant le décodage.",
 		"connecting": "Connexion au site web...",
 	},
 	"zh_CN": {
@@ -290,6 +295,7 @@ static var TRANSLATIONS: Dictionary = {
 		"delete_error": "删除着色器时出错",
 		"hint_browser": "💡 在浏览器中打开以查看视频和实时预览",
 		"watch_video": "观看视频",
+		"gif_hint": "将鼠标悬停在卡片上以播放 GIF 预览。它会在解码时逐步加载。",
 		"connecting": "连接网站中...",
 	},
 	"ja": {
@@ -333,6 +339,7 @@ static var TRANSLATIONS: Dictionary = {
 		"delete_error": "シェーダーの削除エラー",
 		"hint_browser": "💡 ブラウザで開いて動画やライブプレビューを見る",
 		"watch_video": "動画を見る",
+		"gif_hint": "カードにカーソルを合わせると GIF プレビューが再生されます。デコード中に徐々に読み込まれます。",
 		"connecting": "ウェブサイトに接続中...",
 	},
 	"ru": {
@@ -376,6 +383,7 @@ static var TRANSLATIONS: Dictionary = {
 		"delete_error": "Ошибка удаления шейдера",
 		"hint_browser": "💡 Откройте в браузере для видео и превью",
 		"watch_video": "Смотреть видео",
+		"gif_hint": "Наведите курсор на карточку, чтобы воспроизвести GIF. Он загружается постепенно по мере декодирования.",
 		"connecting": "Подключение к сайту...",
 	},
 	"pt_BR": {
@@ -419,6 +427,7 @@ static var TRANSLATIONS: Dictionary = {
 		"delete_error": "Erro ao excluir shader",
 		"hint_browser": "💡 Abra no navegador para ver vídeos e prévia ao vivo",
 		"watch_video": "Assistir vídeo",
+		"gif_hint": "Passe o mouse sobre um card para reproduzir a prévia em GIF. Ela carrega gradualmente durante a decodificação.",
 		"connecting": "Conectando ao site...",
 	},
 }

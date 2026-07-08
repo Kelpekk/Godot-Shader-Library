@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.5] - 2026-07-07
+
+### Added
+- **Animated GIF previews on hover** — GIF cards still show a static first frame in the grid, but hovering one now **plays the full animation**, decoded live in the editor. Only the hovered card animates, so the grid stays light.
+- **Progressive playback** — the animation starts as soon as the first couple of frames are decoded and grows to the full loop as the rest arrive off-thread, so it begins almost immediately instead of after a full decode.
+- **Loading bar** — a thin indeterminate bar sweeps across the top of a card while its GIF is decoding.
+- **"!" info chip** — a small marker next to the title; hovering it explains how GIF previews load. Localized in all 9 languages.
+- **In-memory frame cache** — re-hovering a GIF you already viewed this session replays instantly (no re-decode).
+
+### Changed
+- **GIF decoder is now multi-frame + streaming** — decodes every frame (with correct GIF disposal handling) and can emit frames one-by-one to the UI as they're produced. Frames are decoded on a `WorkerThreadPool` worker so the editor stays responsive.
+- **Frame cap + downscaled animation frames** — animations are capped at 60 frames and downscaled to 280 px wide, bounding decode time and memory (~14 MB per cached GIF instead of ~80 MB).
+- README and the preview-dialog behavior updated to reflect hover-to-play GIFs.
+
+### Fixed
+- **GIFs decoded on a worker thread failed silently** — the decoder is now instantiated on the main thread (creating an `@tool` GDScript instance on a worker thread fails silently in the editor); only the pure decode runs on the worker.
+- **Cached GIFs lost their playability** — the in-memory texture cache was serving GIFs' first frames as static images, stripping the `GifPlayer`; GIFs now always route through the player path so hover-to-animate keeps working after a page revisit.
+- **`get_meta` errors on missing keys** — `get_meta(name, null)` treats an explicit `null` default as "no default" and raises; all reads now guard with `has_meta` first.
+- **Stale async decodes no longer land on the wrong card** — a decode finishing after the pointer moved on is discarded (a `_hover_gen` generation counter), and progressive frames only apply while the same card is hovered.
+
+### Technical
+- `api/gif_decoder.gd`: streaming rewrite — `decode()` / `decode_all()` / `decode_streaming(bytes, max, on_frame)` share one loop via `_run`/`_emit`; `MAX_ANIM_FRAMES = 60`; disposal follows the browser convention (2 → clear rect to transparent, 3 → restore snapshot); tightened `_blit` inner loop.
+- `ui/gif_player.gd`: `play_animation()` / `stop_animation()` / `is_animating()`; a `Timer` cycles frames using per-frame delays; playback references the browser's growing frame array so it extends as frames stream in.
+- `ui/shader_browser.gd`: debounced hover (`_hover_anim_timer`), `_on_stream_frame` / `_on_stream_done`, `_gif_frames_cache` (FIFO, 3 GIFs), `ANIM_FRAME_MAX_WIDTH = 280`, `_downscale_image(img, max_w)`, the top-of-card loading bar, and the header "!" info chip.
+- `api/translations.gd`: new `gif_hint` key in all 9 locales.
+
 ## [1.4] - 2026-06-02
 
 ### Added

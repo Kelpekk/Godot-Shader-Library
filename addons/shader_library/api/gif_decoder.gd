@@ -1,55 +1,145 @@
 @tool
 extends RefCounted
 
-## Pure GDScript GIF89a decoder — FIRST FRAME ONLY.
+## Pure GDScript GIF89a decoder.
 ##
-## Trying to animate GIFs across all godotshaders.com previews was a losing
-## game (disposal-method conventions diverge between encoders, browsers ignore
-## the spec for disposal=2, etc.). moongdevstudio/AssetPlus solves the same
-## problem by decoding only the first frame and showing it as a static
-## thumbnail; we do the same. The ▶ badge on the card flags it as animated;
-## "Watch Video" in the preview dialog opens the real GIF in a browser.
+## Entry points:
+##   decode(bytes)                 -> Array with ONLY the first composited frame
+##                                    (cheap; the static thumbnail on cards).
+##   decode_all(bytes)             -> Array with up to MAX_ANIM_FRAMES frames.
+##   decode_streaming(bytes, n, cb)-> decodes up to n frames, invoking cb per
+##                                    frame as it's produced (progressive
+##                                    playback: the UI starts animating with the
+##                                    first couple of frames while the rest keep
+##                                    arriving). Runs on the caller's thread.
 ##
-## Usage: var frames = GIFDecoder.new().decode(bytes)
-## Returns Array of Dictionary: { image: Image, delay_ms: int }
-## (delay_ms is kept for API compatibility but the GifPlayer ignores it.)
+## Each frame is { image: Image, delay_ms: int } — a full logical-screen-sized
+## RGBA frame already composited over the running canvas, so the player just
+## swaps textures.
+##
+## Disposal handling is the part that historically broke animation: encoders
+## and browsers disagree on disposal=2. We follow the browser convention —
+## disposal 2 clears the frame's rect to TRANSPARENT (not the background color),
+## disposal 3 restores the canvas snapshot from before the frame. That matches
+## how these GIFs look on godotshaders.com.
 
 const _EXT := 0x21
 const _IMG := 0x2C
 const _END := 0x3B
 const _GCE := 0xF9  # Graphic Control Extension label
 
+# Hard cap on decoded frames. Bounds worst-case decode time AND memory for very
+# long GIFs; they simply loop the first MAX_ANIM_FRAMES frames.
+const MAX_ANIM_FRAMES := 60
+
 var _d: PackedByteArray
 var _p: int
 var _w: int
 var _h: int
 var _gct: PackedByteArray  # raw RGB triples
-var _trans_idx: int = -1
-var _delay_ms: int = 100
+
+# Emit target: either an array we collect into, or a per-frame callback.
+var _out_frames: Array = []
+var _on_frame: Callable = Callable()
+var _max_frames: int = 1
 
 
 func decode(data: PackedByteArray) -> Array:
+	return _run(data, 1, Callable())
+
+
+func decode_all(data: PackedByteArray) -> Array:
+	return _run(data, MAX_ANIM_FRAMES, Callable())
+
+
+func decode_streaming(data: PackedByteArray, max_frames: int, on_frame: Callable) -> void:
+	_run(data, max_frames, on_frame)
+
+
+func _run(data: PackedByteArray, max_frames: int, on_frame: Callable) -> Array:
+	_out_frames = []
+	_on_frame = on_frame
+	_max_frames = maxi(1, max_frames)
+	_decode(data)
+	return _out_frames
+
+
+func _emit(img: Image, delay_ms: int) -> void:
+	var fr := {"image": img, "delay_ms": delay_ms}
+	if _on_frame.is_valid():
+		_on_frame.call(fr)
+	else:
+		_out_frames.append(fr)
+
+
+func _decode(data: PackedByteArray) -> void:
 	_d = data
 	_p = 0
 	if not _hdr() or not _lsd():
-		return []
+		return
 
-	# Walk blocks until the first Image Descriptor. We honor GCE blocks before
-	# the first IMG so transparency / delay come through, but otherwise we just
-	# skip extensions.
+	var emitted: int = 0
+	# Running canvas the frames composite onto (persists across frames).
+	var canvas := PackedByteArray()
+	canvas.resize(_w * _h * 4)  # zero-filled == transparent
+
+	# Pending Graphic Control Extension state for the NEXT image block.
+	var g_delay: int = 100
+	var g_trans: int = -1
+	var g_disposal: int = 0
+
 	while _p < _d.size():
 		var b: int = _d[_p]; _p += 1
 		if b == _IMG:
-			var f = _frame()
-			if f.is_empty(): return []
-			return [f]
+			var fr = _read_frame_indices()
+			if fr.is_empty():
+				return  # corrupt — stop with whatever we've emitted
+			var disposal: int = g_disposal
+			# Snapshot BEFORE compositing, so disposal=3 can restore it.
+			var snapshot: PackedByteArray
+			if disposal == 3:
+				snapshot = canvas.duplicate()
+
+			_blit(canvas, fr, g_trans)
+
+			var img := Image.create_from_data(_w, _h, false, Image.FORMAT_RGBA8, canvas.duplicate())
+			_emit(img, g_delay)
+			emitted += 1
+
+			if emitted >= _max_frames:
+				return
+
+			# Apply THIS frame's disposal to prepare the canvas for the next one.
+			match disposal:
+				2:  # restore to background -> browsers treat as clear-to-transparent
+					_clear_rect(canvas, fr["left"], fr["top"], fr["fw"], fr["fh"])
+				3:  # restore to previous
+					canvas = snapshot
+				_:  # 0 / 1: leave the canvas as-is
+					pass
+
+			# Reset pending GCE for the next frame.
+			g_delay = 100; g_trans = -1; g_disposal = 0
 		elif b == _EXT:
-			_ext()
+			if _p >= _d.size(): break
+			var lbl: int = _d[_p]; _p += 1
+			if lbl == _GCE:
+				var bsz: int = _d[_p]; _p += 1
+				if bsz == 4 and _p + 5 <= _d.size():
+					var pk: int = _d[_p]; _p += 1
+					g_disposal = (pk >> 2) & 0x07
+					g_delay = _u16() * 10
+					if g_delay == 0: g_delay = 80
+					g_trans = _d[_p] if (pk & 0x01) else -1
+					_p += 2  # transparent index + block terminator
+				else:
+					_skip_subs()
+			else:
+				_skip_subs()
 		elif b == _END:
 			break
 		else:
 			break
-	return []
 
 
 # ── Header / Logical Screen Descriptor ────────────────────────────────────────
@@ -71,7 +161,7 @@ func _lsd() -> bool:
 		_gct = _read_palette(gct_sz)
 	else:
 		_gct = PackedByteArray()
-	return true
+	return _w > 0 and _h > 0
 
 
 func _read_palette(n: int) -> PackedByteArray:
@@ -86,26 +176,10 @@ func _read_palette(n: int) -> PackedByteArray:
 	return out
 
 
-# ── Extension block (we only care about GCE for transparency / delay) ───────
+# ── Image frame: read descriptor + decode palette indices ─────────────────────
+# Returns { idx, left, top, fw, fh, ct, ct_entries } or {} on failure.
 
-func _ext() -> void:
-	if _p >= _d.size(): return
-	var lbl: int = _d[_p]; _p += 1
-	if lbl == _GCE:
-		var bsz: int = _d[_p]; _p += 1
-		if bsz == 4 and _p + 4 <= _d.size():
-			var pk: int = _d[_p]; _p += 1
-			_delay_ms = _u16() * 10
-			if _delay_ms == 0: _delay_ms = 80
-			_trans_idx = _d[_p] if (pk & 0x01) else -1
-			_p += 2  # transparent index + block terminator
-	else:
-		_skip_subs()
-
-
-# ── Image frame ───────────────────────────────────────────────────────────────
-
-func _frame() -> Dictionary:
+func _read_frame_indices() -> Dictionary:
 	if _p + 9 > _d.size(): return {}
 
 	var left: int = _u16(); var top: int = _u16()
@@ -124,32 +198,54 @@ func _frame() -> Dictionary:
 	var idx: PackedByteArray = _lzw(raw, mcs)
 	if interlaced: idx = _deinterlace(idx, fw, fh)
 
-	# Single-frame buffer initialised to transparent. We composite directly into
-	# it — no separate canvas / prev_canvas / disposal handling.
-	var px := PackedByteArray()
-	px.resize(_w * _h * 4)
-	# fill(0) leaves everything transparent black; the GifPlayer's solid-black
-	# panel renders behind so the user sees black where the frame doesn't draw.
+	return {
+		"idx": idx, "left": left, "top": top, "fw": fw, "fh": fh,
+		"ct": ct, "ct_entries": ct_entries,
+	}
 
+
+# Composite a frame's palette indices onto the running canvas at its offset,
+# skipping the transparent index so earlier canvas content shows through.
+func _blit(canvas: PackedByteArray, fr: Dictionary, trans_idx: int) -> void:
+	var idx: PackedByteArray = fr["idx"]
+	var ct: PackedByteArray = fr["ct"]
+	var ct_entries: int = fr["ct_entries"]
+	var left: int = fr["left"]; var top: int = fr["top"]
+	var fw: int = fr["fw"]; var fh: int = fr["fh"]
+
+	var idx_n: int = idx.size()
 	var i := 0
 	for y in range(fh):
+		var dst_y: int = top + y
+		if dst_y >= _h:
+			break
+		var row_off: int = dst_y * _w * 4  # hoisted out of the x loop
 		for x in range(fw):
-			if i >= idx.size(): i += 1; continue
+			if i >= idx_n:
+				return
 			var ci: int = idx[i]; i += 1
-			if ci == _trans_idx: continue
+			if ci == trans_idx: continue
 			if ci >= ct_entries: continue
 			var dst_x: int = left + x
-			var dst_y: int = top + y
-			if dst_x >= _w or dst_y >= _h: continue
-			var off: int = (dst_y * _w + dst_x) * 4
+			if dst_x >= _w: continue
+			var off: int = row_off + dst_x * 4
 			var pal_off: int = ci * 3
-			px[off]   = ct[pal_off]
-			px[off+1] = ct[pal_off+1]
-			px[off+2] = ct[pal_off+2]
-			px[off+3] = 255
+			canvas[off]   = ct[pal_off]
+			canvas[off+1] = ct[pal_off+1]
+			canvas[off+2] = ct[pal_off+2]
+			canvas[off+3] = 255
 
-	var img := Image.create_from_data(_w, _h, false, Image.FORMAT_RGBA8, px)
-	return {"image": img, "delay_ms": _delay_ms}
+
+# Clear a rectangle of the canvas back to transparent (disposal method 2).
+func _clear_rect(canvas: PackedByteArray, left: int, top: int, fw: int, fh: int) -> void:
+	for y in range(fh):
+		var dst_y: int = top + y
+		if dst_y >= _h: break
+		for x in range(fw):
+			var dst_x: int = left + x
+			if dst_x >= _w: continue
+			var off: int = (dst_y * _w + dst_x) * 4
+			canvas[off] = 0; canvas[off+1] = 0; canvas[off+2] = 0; canvas[off+3] = 0
 
 
 # ── LZW decompressor ──────────────────────────────────────────────────────────

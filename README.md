@@ -2,7 +2,7 @@
 
 [![Godot Engine](https://img.shields.io/badge/Godot-4.x-blue?logo=godot-engine&logoColor=white)](https://godotengine.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-1.4-orange)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-1.5-orange)](CHANGELOG.md)
 
 > **Disclaimer:** This is an **unofficial** plugin and is not affiliated with or endorsed by [godotshaders.com](https://godotshaders.com).
 
@@ -19,7 +19,7 @@ Browse and install shaders from [godotshaders.com](https://godotshaders.com) dir
 - **🔍 Browse 2000+ Shaders** - Access the entire godotshaders.com library
 - **🔎 Smart Search & Filter** - Find shaders by name, author, or category (Spatial, Canvas Item, Particles, Sky, Fog)
 - **📥 One-Click Install** - Download shaders directly to your project with a single click
-- **🎞️ GIF Preview Support** - Animated GIF previews render as their first frame (with a ▶ badge); click *Watch Video* in the preview dialog to see the full animation in your browser
+- **🎞️ Animated GIF Previews** - GIF previews (marked with a ▶ badge) show a static first frame in the grid and **play the full animation when you hover the card** — decoded live in the editor with a pure-GDScript decoder (no native dependencies). *Watch Video* in the preview dialog opens the original in your browser.
 - **👁️ Rich Preview** - View full shader details:
   - 📸 High-quality preview image
   - 📝 Complete description with clickable links
@@ -112,7 +112,7 @@ Click **Install** to download the shader to `res://shaders/shaderlib/` folder.
 addons/shader_library/
 ├── api/
 │   ├── cache_manager.gd        # Downloads shader database, indexes image cache
-│   ├── gif_decoder.gd          # Pure-GDScript GIF89a decoder (first frame only)
+│   ├── gif_decoder.gd          # Pure-GDScript GIF89a decoder (streaming, multi-frame)
 │   ├── installed_manager.gd    # Track installed shaders
 │   ├── shader_installer.gd     # Download & install shaders
 │   ├── translations.gd         # Multi-language support (9 languages)
