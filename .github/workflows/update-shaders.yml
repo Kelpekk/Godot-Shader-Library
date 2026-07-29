@@ -31,7 +31,20 @@ jobs:
       
       - name: Scrape shaders
         run: python scripts/scrape_shaders.py
-      
+
+      - name: Guard against a broken scrape
+        # If the scraper returns far fewer shaders than expected (e.g. 0 because
+        # godotshaders.com changed its markup or started blocking us), do NOT
+        # let the near-empty result overwrite the good database. The real DB is
+        # ~2200 entries, so anything under this floor means the scrape failed.
+        run: |
+          COUNT=$(python -c "import json; print(json.load(open('data/shaders.json')).get('count', 0))")
+          echo "Scraped shader count: $COUNT"
+          if [ "$COUNT" -lt 1000 ]; then
+            echo "::warning::Scrape returned only $COUNT shaders (< 1000). Keeping the existing database instead of committing a broken one."
+            git checkout -- data/shaders.json
+          fi
+
       - name: Commit and push if changed
         run: |
           git config --local user.email "action@github.com"
