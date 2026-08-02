@@ -15,7 +15,11 @@ from urllib.parse import urljoin, urlparse
 from typing import Optional, Dict, Any, List
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import requests
+# curl_cffi mimics a real browser's TLS/JA3 fingerprint. godotshaders.com's WAF
+# started returning HTTP 454 to plain `requests` (its TLS fingerprint is easily
+# flagged as non-browser) around 2026-07-28, which is what broke the scraper.
+# The impersonated fingerprint gets through where `requests` is blocked.
+from curl_cffi import requests
 from bs4 import BeautifulSoup, NavigableString
 
 BASE_URL = "https://godotshaders.com"
@@ -55,8 +59,9 @@ HEADERS = {
     "Cache-Control": "max-age=0",
 }
 
-# Create a session for connection reuse
-session = requests.Session()
+# Create a session that impersonates a recent Chrome (TLS fingerprint + headers).
+# This is what lets us past the WAF that returns 454 to plain `requests`.
+session = requests.Session(impersonate="chrome")
 session.headers.update(HEADERS)
 
 
@@ -148,17 +153,17 @@ def safe_get_text(element, default: str = "") -> str:
 
 
 def fetch_page(url: str, retries: int = MAX_RETRIES) -> Optional[str]:
-    """Fetch a page with proper headers and retry logic."""
+    """Fetch a page with a browser-impersonated session and retry logic."""
     for attempt in range(retries):
         try:
             response = session.get(url, timeout=30)
             response.raise_for_status()
-            
-            # Try to detect encoding issues
-            response.encoding = response.apparent_encoding or 'utf-8'
-            
+            # curl_cffi decodes the body for us; .text is ready to parse.
             return response.text
-        except requests.exceptions.RequestException as e:
+        except Exception as e:
+            # Broad catch — curl_cffi raises its own error types, not
+            # requests.exceptions. Any failure (block, timeout, HTTP error)
+            # triggers a retry, then gives up.
             if attempt < retries - 1:
                 print(f"    Retry {attempt + 1}/{retries} for {url}: {e}")
                 time.sleep(RETRY_DELAY * (attempt + 1))

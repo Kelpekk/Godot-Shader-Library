@@ -27,7 +27,7 @@ jobs:
       
       - name: Install dependencies
         run: |
-          pip install requests beautifulsoup4
+          pip install curl_cffi beautifulsoup4
       
       - name: Scrape shaders
         run: python scripts/scrape_shaders.py
