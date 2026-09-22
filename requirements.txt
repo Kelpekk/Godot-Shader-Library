@@ -1,0 +1,7 @@
+# Dependencies for scripts/scrape_shaders.py
+playwright>=1.40
+beautifulsoup4>=4.12
+curl_cffi>=0.6  # only used by the Jina fallback path
+
+# After installing these, also fetch the browser binary once:
+#   python -m playwright install chromium

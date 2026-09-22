@@ -17,3 +17,4 @@ Thumbs.db
 
 # Local planning / scratch (not part of the addon)
 .planer/
+__pycache__/

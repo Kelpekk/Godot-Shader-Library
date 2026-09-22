@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """
 Scrape shaders from godotshaders.com and save to JSON.
-This runs via GitHub Actions once daily.
+
+Fetches pages through a real headless Chromium (via Playwright) since the
+site's WAF serves a JS challenge to any non-browser client, from any IP.
+Run manually with `python scripts/scrape_shaders.py` (see README/CONTRIBUTING
+for one-time setup), or via the weekly GitHub Actions workflow.
 """
 
 import json
@@ -15,38 +19,33 @@ from urllib.parse import urljoin, urlparse
 from typing import Optional, Dict, Any, List
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# curl_cffi (browser-impersonating HTTP client) is used to reach the Jina
-# reader below; plain requests would also work here, but curl_cffi is already a
-# dependency and is more robust.
+# curl_cffi is only used as a last-resort fallback (see _fetch_via_jina below).
 from curl_cffi import requests
 from bs4 import BeautifulSoup, NavigableString
 
 BASE_URL = "https://godotshaders.com"
 SHADERS_URL = "https://godotshaders.com/shader/"
 
-# godotshaders.com's WAF blocks GitHub Actions IP ranges outright — every direct
-# request returns HTTP 454, regardless of TLS fingerprint (confirmed: even a real
-# Chrome fingerprint via curl_cffi is blocked from Actions runners). So instead
-# of hitting the site directly we fetch each page through Jina's reader
-# (r.jina.ai), which retrieves it from its own (non-blocked) infrastructure and,
-# with the "X-Return-Format: html" header, returns the raw HTML unchanged. The
-# BeautifulSoup parsing below is identical to before.
+# godotshaders.com serves every non-browser HTTP client (plain requests, curl,
+# even curl_cffi with a spoofed Chrome TLS fingerprint) a "Checking your
+# browser..." JS challenge page (HTTP 454) instead of the real content -- this
+# happens from ANY IP, including ordinary residential connections, so it is
+# NOT an IP block. It's a JS challenge: the page only unlocks once a real
+# browser executes its JavaScript. A real (headless) browser sails through it,
+# see fetch_page() below. Jina's reader (r.jina.ai) is kept only as a fallback
+# for environments where a Chromium binary isn't available (see
+# _fetch_via_jina) -- it costs Jina API tokens (10M one-time free grant, then
+# paid), while the Playwright path is free and works from any normal machine.
 JINA_READER_PREFIX = "https://r.jina.ai/"
-
-# Jina's KEYLESS reader rate-limits by IP and rejects datacenter IPs (returns 403
-# from GitHub Actions runners). With a free API key the limit is per-key instead
-# of per-IP, so it works from Actions. Set the JINA_API_KEY repo secret to enable
-# live updates; without it the scrape fails gracefully and the guard in the
-# workflow keeps the existing database. Get a free key at https://jina.ai/reader
 JINA_API_KEY = os.environ.get("JINA_API_KEY", "").strip()
 
 # Output file path relative to script's parent directory (for github/data/)
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_FILE = os.path.join(SCRIPT_DIR, "..", "data", "shaders.json")
 PAGES_TO_FETCH = 100  # High number, scraper auto-stops when page is empty
-# Delay between requests. Jina's keyless reader is rate-limited, so we stay well
-# under it; combined with per-page fetch latency the full run takes ~15-30 min.
-REQUEST_DELAY = 3.0
+# Delay between requests, to be polite to the real site (we now hit it
+# directly through a real browser instead of a third-party reader).
+REQUEST_DELAY = 2.0
 DETAIL_REQUEST_DELAY = 0.5  # Delay between detail page requests - increased
 MAX_RETRIES = 3
 RETRY_DELAY = 5.0  # Increased retry delay
@@ -170,34 +169,108 @@ def safe_get_text(element, default: str = "") -> str:
         return default
 
 
-def fetch_page(url: str, retries: int = MAX_RETRIES) -> Optional[str]:
-    """Fetch a page's raw HTML through the Jina reader, with retry logic.
+_browser_state: Dict[str, Any] = {}
 
-    The target godotshaders.com URL is appended to the reader prefix; Jina
-    fetches it server-side (bypassing the WAF's IP block) and returns the HTML.
-    """
+
+def _get_browser_page():
+    """Lazily launch one headless Chromium instance and reuse its single page
+    for every fetch (the script fetches pages sequentially, so one tab is
+    enough and avoids the overhead of relaunching a browser per request)."""
+    if "page" in _browser_state:
+        return _browser_state["page"]
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as e:
+        raise RuntimeError(
+            "playwright is not installed. Run: pip install -r requirements.txt "
+            "&& python -m playwright install chromium"
+        ) from e
+    pw = sync_playwright().start()
+    try:
+        browser = pw.chromium.launch(headless=True)
+    except Exception as e:
+        pw.stop()
+        raise RuntimeError(
+            "Chromium isn't installed for Playwright. Run: "
+            "python -m playwright install chromium"
+        ) from e
+    context = browser.new_context(user_agent=HEADERS["User-Agent"], locale="en-US")
+    page = context.new_page()
+    _browser_state.update(playwright=pw, browser=browser, context=context, page=page)
+    return page
+
+
+def close_browser() -> None:
+    """Release the Playwright browser. Call once at the end of a run."""
+    browser = _browser_state.pop("browser", None)
+    pw = _browser_state.pop("playwright", None)
+    _browser_state.pop("context", None)
+    _browser_state.pop("page", None)
+    if browser is not None:
+        try:
+            browser.close()
+        except Exception:
+            pass
+    if pw is not None:
+        try:
+            pw.stop()
+        except Exception:
+            pass
+
+
+def _fetch_via_jina(url: str) -> Optional[str]:
+    """Last-resort fallback when no Chromium binary is available: fetch through
+    Jina's reader (r.jina.ai). Costs Jina API tokens (free grant is one-time,
+    10M tokens, then paid) -- only used if the Playwright path above fails."""
+    if not JINA_API_KEY:
+        return None
     proxied = JINA_READER_PREFIX + url
-    # X-Return-Format: html -> raw page HTML (not Jina's markdown), so the existing
-    # card selectors keep working. The API key (when set) lifts the keyless
-    # per-IP limit that blocks Actions runners.
-    req_headers = {"X-Return-Format": "html"}
-    if JINA_API_KEY:
-        req_headers["Authorization"] = f"Bearer {JINA_API_KEY}"
+    req_headers = {"X-Return-Format": "html", "Authorization": f"Bearer {JINA_API_KEY}"}
+    try:
+        response = session.get(proxied, headers=req_headers, timeout=90)
+        response.raise_for_status()
+        return response.text
+    except Exception as e:
+        print(f"    Jina fallback also failed for {url}: {e}")
+        return None
+
+
+def fetch_page(url: str, retries: int = MAX_RETRIES) -> Optional[str]:
+    """Fetch a page's rendered HTML using a real headless browser.
+
+    godotshaders.com's WAF serves a JS challenge to non-browser clients from
+    any IP; a real (headless) Chromium instance runs the challenge's
+    JavaScript like a normal visitor would and gets the real page back.
+    """
     for attempt in range(retries):
         try:
-            response = session.get(proxied, headers=req_headers, timeout=90)  # Jina can be slow
-            response.raise_for_status()
-            return response.text
+            page = _get_browser_page()
+            page.goto(url, wait_until="domcontentloaded", timeout=45000)
+            # The WAF briefly shows a "Checking your browser..." interstitial
+            # before its JS unlocks the real page; give that a moment, then
+            # fall through even if the selector never shows up (a genuinely
+            # empty results page has no cards either).
+            try:
+                page.wait_for_selector(
+                    "article.gds-shader-card, .entry-content, .gds-empty-state",
+                    timeout=15000,
+                )
+            except Exception:
+                pass
+            content = page.content()
+            if "Checking your browser" in content and "gds-shader-card" not in content:
+                raise RuntimeError("still on the WAF challenge page")
+            return content
         except Exception as e:
-            # Broad catch — curl_cffi raises its own error types, not
-            # requests.exceptions. Any failure (block, timeout, HTTP error)
-            # triggers a retry, then gives up.
             if attempt < retries - 1:
                 print(f"    Retry {attempt + 1}/{retries} for {url}: {e}")
                 time.sleep(RETRY_DELAY * (attempt + 1))
             else:
-                print(f"    Failed after {retries} attempts: {url}")
-                return None
+                print(f"    Playwright failed after {retries} attempts for {url}: {e}")
+                fallback = _fetch_via_jina(url)
+                if fallback:
+                    print(f"    Recovered {url} via Jina fallback")
+                return fallback
     return None
 
 def parse_shader_card(article) -> Optional[Dict[str, Any]]:
@@ -782,8 +855,11 @@ def main():
     print(f"Fetch details: {FETCH_DETAILS}")
     print()
     
-    shaders = scrape_all_shaders()
-    
+    try:
+        shaders = scrape_all_shaders()
+    finally:
+        close_browser()
+
     # Validate all shaders
     valid_shaders = []
     invalid_count = 0

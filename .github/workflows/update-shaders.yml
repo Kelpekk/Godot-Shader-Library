@@ -29,12 +29,14 @@ jobs:
       
       - name: Install dependencies
         run: |
-          pip install curl_cffi beautifulsoup4
-      
+          pip install -r requirements.txt
+          python -m playwright install --with-deps chromium
+
       - name: Scrape shaders
-        # JINA_API_KEY (optional repo secret) lets the scraper authenticate with
-        # Jina's reader so it works from Actions' datacenter IPs. Without it the
-        # scrape fails and the guard below keeps the existing database.
+        # The scraper drives a real headless Chromium (Playwright) to get past
+        # godotshaders.com's JS challenge -- this works from any IP, no token
+        # budget needed. JINA_API_KEY (optional repo secret) is only a
+        # last-resort fallback if the Chromium install ever fails here.
         env:
           JINA_API_KEY: ${{ secrets.JINA_API_KEY }}
         run: python scripts/scrape_shaders.py
